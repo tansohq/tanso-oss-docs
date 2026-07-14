@@ -1,0 +1,79 @@
+---
+title: "TypeScript SDK"
+description: "@tansohq/sdk against your self-hosted instance"
+---
+
+The official SDK is published as
+[`@tansohq/sdk`](https://www.npmjs.com/package/@tansohq/sdk). It works
+against a self-hosted instance with one option: `baseUrl`.
+
+```bash
+npm install @tansohq/sdk
+```
+
+```typescript
+import { TansoClient } from "@tansohq/sdk";
+
+const client = new TansoClient("sk_test_your_key", {
+  baseUrl: "http://localhost:8080",   // your instance — required for self-host
+});
+```
+
+<Warning>
+Without `baseUrl`, the SDK routes by key prefix to Tanso's hosted endpoints.
+For a self-hosted instance, always set it.
+</Warning>
+
+## The integration loop
+
+```typescript
+// Check before serving
+const ent = await client.entitlements.check("cust_demo_1", "api-calls");
+if (!ent.allowed) return deny();
+
+// Serve, then report
+await client.events.ingest({
+  customerReferenceId: "cust_demo_1",
+  eventName: "api_call",
+  featureKey: "api-calls",
+  eventIdempotencyKey: crypto.randomUUID(),  // unique per event
+  usageUnits: 1,
+});
+```
+
+## Surface
+
+| Resource | Methods |
+| -------- | ------- |
+| `customers` | `create`, `get`, `update` |
+| `subscriptions` | `create`, `cancel`, `revertCancellation`, `changePlan`, `cancelScheduledChange` |
+| `entitlements` | `check`, `evaluate`, `list` |
+| `events` | `ingest` |
+| `plans` | `list` |
+| `features` | `list`, `get` |
+| `credits` | `listPools`, `getPool`, `listGrants`, `listTransactions` |
+| `billing` | `listInvoices`, `markPaid`, `createCheckoutSession` |
+
+## Errors are typed
+
+```typescript
+import { TansoConflictError, TansoNotFoundError } from "@tansohq/sdk";
+
+try {
+  await client.events.ingest({ ... });
+} catch (e) {
+  if (e instanceof TansoConflictError) {
+    // duplicate eventIdempotencyKey — already recorded, safe to continue
+  }
+}
+```
+
+`TansoConflictError` on a duplicate idempotency key is the SDK working as
+designed: your retries are safe because the second write is refused.
+
+## Notes
+
+- List responses return `{ items, pagination }`; plan list items nest the
+  plan under a `plan` property.
+- `subscriptions.create` takes `customerReferenceId`, and the target plan
+  must be `ACTIVE` (see [billing lifecycle](/billing-lifecycle)).

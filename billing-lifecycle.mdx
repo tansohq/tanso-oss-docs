@@ -1,0 +1,140 @@
+---
+title: "Billing lifecycle"
+description: "From empty database to attributed revenue — every call verified"
+---
+
+This walkthrough goes from a fresh install to a paying, metered customer.
+Every request and response below was run against a clean instance; where the
+API's behavior might surprise you, that's called out rather than smoothed
+over.
+
+Assumes the [quickstart](/quickstart) stack and its seeded credentials.
+`$TOKEN` is a JWT from [login](/authentication); `$KEY` is the seeded API key.
+
+## 1. Create a feature
+
+```bash
+curl -X POST http://localhost:8080/api/v1/monetization/features \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"API Calls","key":"api-calls","featureType":"METERED"}'
+```
+
+## 2. Create a plan — it starts as a DRAFT
+
+```bash
+curl -X POST http://localhost:8080/api/v1/monetization/plans \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"key":"starter","name":"Starter","priceAmount":10.00,"intervalMonths":1}'
+```
+
+<Note>
+Plans are created in `DRAFT` status regardless of what you pass at creation,
+and draft plans reject subscriptions. Activation is a deliberate, separate
+step (step 4).
+</Note>
+
+## 3. Link the feature with a pricing rule
+
+```bash
+curl -X POST http://localhost:8080/api/v1/monetization/rules/plan-features \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "planId": "<plan-id>",
+    "featureId": "<feature-id>",
+    "isEnabled": true,
+    "type": "BASE",
+    "value": {
+      "pricing": {
+        "model": "usage",
+        "price_per_unit": 0.10,
+        "usage_unit_type": "api_calls"
+      }
+    }
+  }'
+```
+
+`type` is always `BASE`; the behavior lives in `value.pricing`. For usage
+pricing, `price_per_unit` and `usage_unit_type` are both required — the API
+returns a specific error naming the missing field if you omit either.
+
+## 4. Activate the plan
+
+```bash
+curl -X PATCH http://localhost:8080/api/v1/monetization/plans/<plan-id> \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"status":"ACTIVE"}'
+```
+
+## 5. Create a customer — keyed by your ID
+
+```bash
+curl -X POST http://localhost:8080/api/v1/client/customers \
+  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"customerReferenceId":"cust_demo_1","email":"demo@example.com"}'
+```
+
+`customerReferenceId` is your system's ID for this customer. You never need
+Tanso's internal UUID on the client API.
+
+## 6. Subscribe
+
+```bash
+curl -X POST http://localhost:8080/api/v1/client/subscriptions \
+  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"customerReferenceId":"cust_demo_1","planId":"<plan-id>"}'
+```
+
+<Note>
+The client subscribe endpoint takes `customerReferenceId` — not `customerId`.
+The subscription is created **inactive**, and a `DUE` invoice for the base
+price is generated. Access begins when that invoice is paid.
+</Note>
+
+## 7. Pay the invoice
+
+Without Stripe connected, invoices are settled explicitly:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/client/billing/invoices/<invoice-id>/mark-paid \
+  -H "X-API-Key: $KEY"
+```
+
+This activates the subscription and grants its entitlements. (With Stripe
+connected, payment flows through Stripe checkout/webhooks instead, and
+`mark-paid` is rejected.)
+
+## 8. Check the entitlement — now allowed
+
+```bash
+curl http://localhost:8080/api/v1/client/entitlements/cust_demo_1/api-calls \
+  -H "X-API-Key: $KEY"
+```
+
+```json
+{"data":{"referenceCustomerId":"cust_demo_1","featureKey":"api-calls",
+ "usage":{"used":0},"allowed":true},"success":true}
+```
+
+Before payment this same call returned `allowed: false`. Enforcement is
+real-time: the check reflects subscription state at the moment you ask.
+
+## 9. Report usage — revenue is attributed immediately
+
+```bash
+curl -X POST http://localhost:8080/api/v1/client/events \
+  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{
+    "eventName": "api_call",
+    "featureKey": "api-calls",
+    "customerReferenceId": "cust_demo_1",
+    "eventIdempotencyKey": "evt-0001",
+    "usageUnits": 12
+  }'
+```
+
+The event books `12 × $0.10 = $1.20` of revenue at ingestion — margin
+analytics don't wait for invoice time. Replaying the same
+`eventIdempotencyKey` returns `409 Conflict`; generate a unique key per event.
+
+At cycle close, the scheduler rolls the period's usage into the next invoice
+automatically.

@@ -1,0 +1,46 @@
+---
+title: "Authentication"
+description: "API keys for machines, JWTs for humans"
+---
+
+Tanso has two authentication surfaces, matching its two APIs.
+
+## Client API — API keys
+
+Everything under `/api/v1/client/**` (and the MCP server at `/mcp`)
+authenticates with a long-lived API key. Keys are prefixed `sk_test_` or
+`sk_live_`, and both header forms work:
+
+```bash
+# Either of these
+-H "X-API-Key: sk_test_..."
+-H "Authorization: Bearer sk_test_..."
+```
+
+Requests without a valid key get `401`. Every call is scoped to the key's
+account — there is no cross-account access.
+
+## Admin API — JWT
+
+Everything under `/api/v1/monetization/**` (the catalog, rules, invoices —
+what the dashboard uses) requires a session token from login:
+
+```bash
+curl -X POST http://localhost:8080/public/v1/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","password":"password"}'
+```
+
+The response contains a JWT; pass it as `Authorization: Bearer <token>`.
+Tokens are signed with your `JWT_SECRET` and expire after 2 hours.
+
+## Which API do I use?
+
+| You are... | Use |
+| ---------- | --- |
+| Your product's backend checking entitlements, reporting usage | Client API, API key |
+| Defining plans, features, pricing rules | Admin API, JWT |
+| An AI agent operating the platform | [MCP](/mcp), API key |
+
+The split exists so the credentials you embed in your application can never
+alter your catalog or pricing.

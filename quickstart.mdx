@@ -1,0 +1,66 @@
+---
+title: "Quickstart"
+description: "Clone to a running, seeded instance in about five minutes"
+---
+
+Docker is the only prerequisite.
+
+## 1. Start the stack
+
+```bash
+git clone https://github.com/tansohq/tanso-oss.git
+cd tanso-oss/deploy
+cp .env.example .env     # set JWT_SECRET, e.g. openssl rand -base64 48
+docker compose up -d --build
+./setup.sh
+```
+
+`setup.sh` waits for the API to become healthy, seeds a test account, and
+prints its credentials:
+
+```
+Login:    test / password
+API key:  sk_test_828df0fc77874c219f353417fbca1ef4
+API:      http://localhost:8080
+Docs:     http://localhost:8080/swagger-ui.html
+```
+
+<Warning>
+These are the shared dev-quickstart credentials from
+`scripts/create-test-account.sql`. Change them before exposing the instance
+to anything real.
+</Warning>
+
+## 2. Make your first call
+
+Client API calls authenticate with the API key, via either header:
+
+```bash
+curl http://localhost:8080/api/v1/client/plans \
+  -H "X-API-Key: sk_test_828df0fc77874c219f353417fbca1ef4"
+```
+
+```json
+{"data":{"items":[],"pagination":{"total":0,"limit":50,"offset":0,"hasMore":false}},"success":true}
+```
+
+Empty list — the seed creates an account, not a catalog. Without the key the
+same call returns `401`.
+
+## 3. Check an entitlement
+
+```bash
+curl http://localhost:8080/api/v1/client/entitlements/some_user/api-calls \
+  -H "X-API-Key: sk_test_828df0fc77874c219f353417fbca1ef4"
+```
+
+Denied, because nothing exists yet — which is the point: Tanso fails closed.
+The [billing lifecycle guide](/billing-lifecycle) walks from here to a
+subscribed customer with revenue attributed, one verified call at a time.
+
+## There is no signup endpoint
+
+This is deliberate. A self-hosted billing engine's operator **is** the tenant;
+a public signup endpoint on your billing system would be pure attack surface.
+You bootstrap your account with `setup.sh` (or `scripts/create-test-account.sql`
+directly) and log in from there.

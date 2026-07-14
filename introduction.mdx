@@ -1,0 +1,52 @@
+---
+title: "Introduction"
+description: "What Tanso is and who it's for"
+---
+
+**Tanso** is an open-source monetization engine for B2B AI products — built
+for teams that sell credits or usage and whose inference costs are big enough
+that margin per customer is a real question.
+
+Every metered event carries its cost: input/output tokens, model, provider,
+and what that usage cost you — alongside what you billed for it. Billing tools
+meter usage but don't know your costs; observability tools know your costs but
+don't bill. Tanso does both in one ledger, so you can see margin per customer,
+per feature, per model.
+
+The same ledger enforces in real time: entitlement checks, usage caps, and
+credit limits are applied when the event is ingested, not reconciled at
+invoice time. Billing state lives in Tanso — Stripe is the payment adapter,
+not the source of truth.
+
+## The model
+
+You define your pricing once, and everything else derives from it:
+
+| Object | What it is |
+| ------ | ---------- |
+| **Feature** | A single capability you sell — `api-calls`, `seats`, `export` |
+| **Plan** | A bundle of features with a base price and billing interval |
+| **Rule** | How a feature behaves in a plan: flat, usage-based, or graduated pricing, plus optional credit backing |
+| **Customer** | Your customer, keyed by *your* ID (`customerReferenceId`) — no ID sync |
+| **Subscription** | A customer on a plan, with period tracking and proration |
+| **Event** | One unit of usage, idempotent, carrying units, cost, and revenue |
+| **Entitlement** | The materialized answer to "can this customer use this feature right now?" |
+| **Credit pool** | Prepaid balance with grants, FIFO draw-down, expiry, and an append-only transaction ledger |
+
+## The integration loop
+
+Three calls from your backend:
+
+1. **Check** an entitlement before serving a request.
+2. **Serve** the request.
+3. **Report** a usage event after.
+
+Tanso enforces limits at ingestion, rolls usage into invoices at cycle close,
+syncs Stripe when connected, and computes margin from the costs you stamp on
+events.
+
+## Next steps
+
+- [Quickstart](/quickstart) — running with seeded data in about five minutes
+- [Billing lifecycle](/billing-lifecycle) — from empty database to first revenue, every call spelled out
+- [Self-hosting](/self-hosting) — configuration and production notes

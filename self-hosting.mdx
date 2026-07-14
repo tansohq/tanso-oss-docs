@@ -1,0 +1,53 @@
+---
+title: "Self-hosting"
+description: "Configuration, environments, and production notes"
+---
+
+The [quickstart](/quickstart) compose stack is the fastest path. This page
+covers what you'll want to know past the first run.
+
+## Environment variables
+
+| Variable | Required | Notes |
+| -------- | -------- | ----- |
+| `JWT_SECRET` | **Yes** | The app refuses to start without it — no insecure default ships. Generate with `openssl rand -base64 48`. |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Yes | PostgreSQL connection. |
+| `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` | No | Leave empty to run without Stripe — invoices settle via `mark-paid`. |
+| `APP_MCP_ENABLED` + `SPRING_AI_MCP_SERVER_ENABLED` | No | Both `true` to expose [`/mcp`](/mcp). Off by default. |
+| `SPRING_PROFILES_ACTIVE` | No | Profile config lives in `application-*.yaml`. |
+
+## Stripe: optional, and an adapter
+
+Fresh accounts run without Stripe. Without it, the invoice lifecycle is fully
+functional — invoices generate at subscribe and cycle close, and you settle
+them via `POST /api/v1/client/billing/invoices/{id}/mark-paid`.
+
+Connecting a Stripe key (via the dashboard or the MCP Stripe setup tools)
+switches the account to Stripe-driven billing: checkout sessions, webhook
+sync, and meter forwarding. Billing state stays in Tanso either way — Stripe
+is the payment adapter, not the source of truth.
+
+## Database & migrations
+
+Liquibase applies the full schema on startup — an empty PostgreSQL is all you
+need. Schema changes ship as new changelog files only; existing changelogs
+are never edited, so upgrades are a restart.
+
+## Scheduled jobs
+
+Invoice generation, subscription cycle rollover, cancellation processing, and
+credit expiration run as in-process scheduled jobs (ShedLock-guarded, so
+multiple instances won't double-fire). Default crons live in
+`application.yaml` under `jobs:`.
+
+## Production checklist
+
+- Change the seeded test account credentials and API key — they are public
+  knowledge (they're in this documentation).
+- Set a strong, private `JWT_SECRET`; rotating it invalidates sessions.
+- Put the API behind TLS; API keys are bearer credentials.
+- `docker compose` in `deploy/` is a starting point, not an HA architecture —
+  the app is a standard Spring Boot container and runs anywhere containers
+  run. Health probes are at `/actuator/health/{liveness,readiness}`.
+- Watch the logs for the first cycle close — billing bugs are cheapest the
+  day you can still read the whole ledger by hand.

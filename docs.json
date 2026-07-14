@@ -1,0 +1,62 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Tanso",
+  "colors": {
+    "primary": "#2d9a8c",
+    "light": "#19ccb4",
+    "dark": "#14b8a6"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "authentication"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "billing-lifecycle",
+          "metering-and-entitlements",
+          "credits"
+        ]
+      },
+      {
+        "group": "Integrate",
+        "pages": [
+          "sdk",
+          "mcp"
+        ]
+      },
+      {
+        "group": "Operate",
+        "pages": [
+          "self-hosting"
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/tansohq/tanso-oss"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://github.com/tansohq/tanso-oss"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/tansohq/tanso-oss"
+    }
+  }
+}

@@ -1,0 +1,58 @@
+---
+title: "Metering & entitlements"
+description: "Idempotent events in, real-time allow/deny out"
+---
+
+## Events
+
+An event is one unit of usage. The minimal shape:
+
+```json
+{
+  "eventName": "api_call",
+  "featureKey": "api-calls",
+  "customerReferenceId": "cust_demo_1",
+  "eventIdempotencyKey": "evt-0001",
+  "usageUnits": 1
+}
+```
+
+- **Idempotency is enforced, not advisory.** A repeated
+  `eventIdempotencyKey` returns `409 Conflict`. Generate one unique key per
+  logical event (a UUID is fine) and you can retry sends safely.
+- **Customers resolve by your ID.** `customerReferenceId` is the same ID you
+  used when creating the customer.
+- **Cost fields are optional but are the margin story.** Events accept
+  `model`, `modelProvider`, `costUnits` (e.g. tokens), `inputTokens`,
+  `outputTokens`, and `costAmount`. Stamp what the usage cost you, and
+  per-customer margin falls out of the same ledger that bills.
+- **Revenue is computed at ingestion** from the plan's pricing rule and
+  stored on the event — not reconstructed at invoice time.
+
+## Entitlements
+
+```bash
+curl http://localhost:8080/api/v1/client/entitlements/{customerReferenceId}/{featureKey} \
+  -H "X-API-Key: $KEY"
+```
+
+The response is a direct allow/deny with context:
+
+```json
+{"data":{"referenceCustomerId":"cust_demo_1","featureKey":"api-calls",
+ "usage":{"used":8},"allowed":true},"success":true}
+```
+
+When denied, `meta.reason` says why (no subscription, entitlement revoked,
+limit reached). Checks **fail closed** — no subscription, unpaid first
+invoice, or missing configuration all mean `allowed: false`.
+
+The intended pattern in your request path:
+
+```
+check entitlement → serve if allowed → report event
+```
+
+Hard limits backed by [credit pools](/credits) are enforced synchronously at
+event ingestion: when a pool with a hard limit is depleted, the event is
+rejected at the door rather than billed and regretted.
