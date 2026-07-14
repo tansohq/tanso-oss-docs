@@ -58,5 +58,9 @@
     "socials": {
       "github": "https://github.com/tansohq/tanso-oss"
     }
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
   }
 }
