@@ -5,7 +5,7 @@ description: "API keys for machines, JWTs for humans"
 
 Tanso has two authentication surfaces, matching its two APIs.
 
-## Client API — API keys
+## Client API - API keys
 
 Everything under `/api/v1/client/**` (and the MCP server at `/mcp`)
 authenticates with a long-lived API key. Keys are prefixed `sk_test_` or
@@ -18,12 +18,43 @@ authenticates with a long-lived API key. Keys are prefixed `sk_test_` or
 ```
 
 Requests without a valid key get `401`. Every call is scoped to the key's
-account — there is no cross-account access.
+account, so there is no cross-account access.
 
-## Admin API — JWT
+## Managing API keys
 
-Everything under `/api/v1/monetization/**` (the catalog, rules, invoices —
-what the dashboard uses) requires a session token from login:
+API key management requires an Admin API JWT. Retrieval returns only a masked
+value:
+
+```bash
+curl http://localhost:8080/api/v1/account/api-key \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Rotate the key when you need a new secret:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/account/api-key \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Rotation invalidates all previous account keys atomically. The response to the
+`POST` contains the new key in full exactly once; later `GET` responses are
+masked. Store the rotated key in your secret manager before leaving the
+response.
+
+## Admin API - JWT
+
+All `/api/v1/**` routes outside the Client API require a session token from
+login. This JWT-protected surface includes:
+
+- `/api/v1/monetization/**` for the catalog, rules, subscriptions, credits, and
+  billing.
+- `/api/v1/account/**` for account details.
+- `/api/v1/tanso/**` for events, imports, settings, and model pricing.
+- `/api/v1/data/**` for Stripe data and imports.
+- `/api/v1/analytics/**` for analytics and insights.
+
+Log in to obtain a token:
 
 ```bash
 curl -X POST http://localhost:8080/public/v1/login \

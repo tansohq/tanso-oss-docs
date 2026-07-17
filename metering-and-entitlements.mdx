@@ -22,12 +22,28 @@ An event is one unit of usage. The minimal shape:
   logical event (a UUID is fine) and you can retry sends safely.
 - **Customers resolve by your ID.** `customerReferenceId` is the same ID you
   used when creating the customer.
-- **Cost fields are optional but are the margin story.** Events accept
-  `model`, `modelProvider`, `costUnits` (e.g. tokens), `inputTokens`,
-  `outputTokens`, and `costAmount`. Stamp what the usage cost you, and
-  per-customer margin falls out of the same ledger that bills.
+- **Cost fields are optional but are the margin story.** Send `costAmount` at
+  the top level. Put model-aware fields inside `costInput`: `model`,
+  `modelProvider`, `inputTokens`, and `outputTokens`. The older
+  `costInput.costUnits` field is deprecated. Stamp what the usage cost you,
+  and per-customer margin falls out of the same ledger that bills.
 - **Revenue is computed at ingestion** from the plan's pricing rule and
-  stored on the event — not reconstructed at invoice time.
+  stored on the event, not reconstructed at invoice time.
+
+For AI usage, the cost portion of an event looks like this:
+
+```json
+{
+  "usageUnits": 3500,
+  "costAmount": 0.0125,
+  "costInput": {
+    "model": "gpt-4o-mini",
+    "modelProvider": "openai",
+    "inputTokens": 3000,
+    "outputTokens": 500
+  }
+}
+```
 
 ## Entitlements
 
@@ -44,7 +60,7 @@ The response is a direct allow/deny with context:
 ```
 
 When denied, `meta.reason` says why (no subscription, entitlement revoked,
-limit reached). Checks **fail closed** — no subscription, unpaid first
+limit reached). Checks **fail closed**: no subscription, unpaid first
 invoice, or missing configuration all mean `allowed: false`.
 
 The intended pattern in your request path:
@@ -53,6 +69,13 @@ The intended pattern in your request path:
 check entitlement → serve if allowed → report event
 ```
 
-Hard limits backed by [credit pools](/credits) are enforced synchronously at
-event ingestion: when a pool with a hard limit is depleted, the event is
-rejected at the door rather than billed and regretted.
+## Credit hard limits
+
+Credit deduction and depletion detection happen synchronously during event
+ingestion. When linked hard-limit pools cannot cover the event, the Client API
+returns `409 Conflict` with `success: false` and a `Credit pool depleted`
+error. The event is not stored and no credits are deducted.
+
+An entitlement check before serving is still the preferred request pattern.
+The ingestion rejection protects against stale checks and direct event sends.
+See [Credits](/credits) for the deduction model.

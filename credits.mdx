@@ -3,7 +3,7 @@ title: "Credits"
 description: "Prepaid balances with grants, FIFO draw-down, and a full ledger"
 ---
 
-Credits in Tanso are a standalone wallet subsystem, linked to subscriptions —
+Credits in Tanso are a standalone wallet subsystem, linked to subscriptions,
 not welded into pricing rules. That keeps two questions separate: *what does
 usage cost* (pricing rules) and *what balance pays for it* (credit pools).
 
@@ -13,7 +13,7 @@ usage cost* (pricing rules) and *what balance pays for it* (credit pools).
 | ------ | ------------ |
 | **Credit model** | Defines a denomination (`api_credits`), rollover policy, and hard-limit behavior |
 | **Credit pool** | A customer's balance in one denomination, with running totals for granted / consumed / expired / reversed |
-| **Grant** | An addition to a pool — plan-included, purchased, or promotional — with optional expiry, drawn down FIFO |
+| **Grant** | An addition to a pool, such as plan-included, purchased, or promotional credits, with optional expiry and FIFO draw-down |
 | **Transaction** | Append-only ledger entry with `balance_before` / `balance_after`, so every balance is auditable to the unit |
 
 Pools link to subscriptions with a **draw priority** and optional
@@ -23,14 +23,19 @@ defined order.
 ## How deduction works
 
 When an event arrives for a feature backed by a credit model, credits are
-deducted synchronously at ingestion — FIFO across grants, respecting draw
+deducted synchronously at ingestion, FIFO across grants and respecting draw
 priority. The deduction is stamped into the event's context, and
 credit-covered usage is excluded from Stripe meter forwarding so it isn't
 billed twice.
 
-If a pool has `hardLimit: true` and the balance can't cover the event, the
-event is **rejected at ingestion** — real-time enforcement, not an invoice
-surprise.
+If a pool has `hardLimit: true` and the balance cannot cover the event, the
+service rejects ingestion with `409 Conflict`. The response has
+`success: false` and an error message beginning with `Credit pool depleted`.
+The transaction rolls back, so the event is not stored and no credits are
+deducted.
+
+Use an entitlement check before serving the feature for an earlier allow/deny
+decision. Event rejection remains the final enforcement boundary.
 
 ## Reading balances (Client API)
 
@@ -53,7 +58,7 @@ tools.
 ## Design notes worth knowing
 
 - **Deduction assumes 1:1** between usage units and the credit denomination.
-- **Expiry is a scheduled job** (`CreditExpirationJob`) — expired grants move
+- **Expiry is a scheduled job** (`CreditExpirationJob`): expired grants move
   their remainder to the pool's `total_expired`, visible in the ledger.
 - **Plan-included credits** are granted on subscription cycle rollover and
   clawed back on cancellation; upgrades grant the delta.
