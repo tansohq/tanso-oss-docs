@@ -1,79 +1,111 @@
 ---
 title: "TypeScript SDK"
-description: "@tansohq/sdk against your self-hosted instance"
+description: "Use the typed server-side client included with Tanso Core"
 ---
 
-The official SDK is published as
-[`@tansohq/sdk`](https://www.npmjs.com/package/@tansohq/sdk). It works
-against a self-hosted instance with one option: `baseUrl`.
+The Tanso Core repository includes a typed, dependency-free client at
+`sdks/typescript`. The runnable Next.js example consumes it as the
+`@tansohq/sdk` workspace package.
 
 ```bash
-npm install @tansohq/sdk
+git clone https://github.com/tansohq/tanso-oss.git
+cd tanso-oss
+npm install
+npm run build --workspace @tansohq/sdk
 ```
 
 ```typescript
 import { TansoClient } from "@tansohq/sdk";
 
-const client = new TansoClient("sk_test_your_key", {
-  baseUrl: "http://localhost:8080",   // your instance — required for self-host
+const tanso = new TansoClient({
+  apiKey: process.env.TANSO_API_KEY!,
+  baseUrl: process.env.TANSO_BASE_URL ?? "http://localhost:8080",
 });
 ```
 
 <Warning>
-Without `baseUrl`, the SDK routes by key prefix to Tanso's hosted endpoints.
-For a self-hosted instance, always set it.
+Create the client only in server-side code. A Tanso API key authenticates the
+whole account and must never enter a browser bundle.
 </Warning>
 
 ## The integration loop
 
 ```typescript
-// Check before serving
-const ent = await client.entitlements.check("cust_demo_1", "api-calls");
-if (!ent.allowed) return deny();
+const requestId = crypto.randomUUID();
 
-// Serve, then report
-await client.events.ingest({
-  customerReferenceId: "cust_demo_1",
-  eventName: "api_call",
-  featureKey: "api-calls",
-  eventIdempotencyKey: crypto.randomUUID(),  // unique per event
-  usageUnits: 1,
+// 1. Check before incurring provider cost.
+const decision = await tanso.evaluateEntitlement({
+  customerReferenceId: "demo-user",
+  featureKey: "ai.chat",
+  usage: {
+    eventName: "ai.chat.generate",
+    usageUnits: 1,
+  },
+  context: {
+    idempotencyKey: `check-${requestId}`,
+    flowId: requestId,
+  },
 });
+
+if (!decision.allowed) {
+  return deny(decision.meta?.reason?.description);
+}
+
+// 2. Perform the billable work.
+const result = await runModel();
+
+// 3. Record usage, unit economics, and one credit deduction.
+await tanso.ingestEvent(
+  {
+    customerReferenceId: "demo-user",
+    featureKey: "ai.chat",
+    eventName: "ai.chat.completed",
+    flowId: requestId,
+    usageUnits: 1,
+    costAmount: result.providerCost,
+    revenueAmount: 0.02,
+  },
+  { idempotencyKey: `usage-${requestId}` },
+);
 ```
 
 ## Surface
 
-| Resource | Methods |
-| -------- | ------- |
-| `customers` | `create`, `get`, `update` |
-| `subscriptions` | `create`, `cancel`, `revertCancellation`, `changePlan`, `cancelScheduledChange` |
-| `entitlements` | `check`, `evaluate`, `list` |
-| `events` | `ingest` |
-| `plans` | `list` |
-| `features` | `list`, `get` |
-| `credits` | `listPools`, `getPool`, `listGrants`, `listTransactions` |
-| `billing` | `listInvoices`, `markPaid`, `createCheckoutSession` |
+| Method | Client API operation |
+| ------ | -------------------- |
+| `createCustomer` | Create a customer |
+| `getCustomer` | Get a customer by `customerReferenceId` |
+| `checkEntitlement` | Read the current allow/deny decision |
+| `evaluateEntitlement` | Simulate requested usage before work |
+| `ingestEvent` | Record idempotent usage, cost, and revenue |
+| `listCreditPools` | List a customer's balances |
+| `getCreditPool` | Read one credit pool |
 
 ## Errors are typed
 
 ```typescript
-import { TansoConflictError, TansoNotFoundError } from "@tansohq/sdk";
+import { TansoApiError } from "@tansohq/sdk";
 
 try {
-  await client.events.ingest({ ... });
-} catch (e) {
-  if (e instanceof TansoConflictError) {
-    // duplicate eventIdempotencyKey — already recorded, safe to continue
+  await tanso.ingestEvent(event, { idempotencyKey: eventId });
+} catch (error) {
+  if (error instanceof TansoApiError && error.status === 409) {
+    // A duplicate idempotency key or depleted hard-limit pool.
   }
 }
 ```
 
-`TansoConflictError` on a duplicate idempotency key is the SDK working as
-designed: your retries are safe because the second write is refused.
+`TansoApiError` exposes `status`, optional `detail`, and the parsed API
+`response`.
 
-## Notes
+<Note>
+`@tansohq/sdk` currently ships in the GitHub repository, not the public npm
+registry. Use the workspace package directly or pack it for your application.
+The [included Next.js
+example](https://github.com/tansohq/tanso-oss/tree/main/examples/nextjs-ai-credits)
+is the canonical integration.
+</Note>
 
-- List responses return `{ items, pagination }`; plan list items nest the
-  plan under a `plan` property.
-- `subscriptions.create` takes `customerReferenceId`, and the target plan
-  must be `ACTIVE` (see [billing lifecycle](/billing-lifecycle)).
+List responses return `{ items, pagination }`. The client unwraps Tanso's
+top-level `{ success, data, error }` envelope and throws on non-success
+responses.

@@ -1,9 +1,10 @@
 ---
 title: "Quickstart"
-description: "Clone to a running, seeded instance in about five minutes"
+description: "Run Tanso and prove a five-credit hard limit end to end"
 ---
 
-Docker is the only prerequisite.
+Docker is the only prerequisite for the API. The runnable Next.js example also
+requires Node.js 20.9 or newer.
 
 ## 1. Start the stack
 
@@ -16,13 +17,14 @@ docker compose up -d --build
 ```
 
 `setup.sh` waits for the API to become healthy, seeds a test account, and
-prints its credentials:
+creates a `demo-user` with five `AI_CREDITS`:
 
 ```
 Login:    test / password
 API key:  sk_test_828df0fc77874c219f353417fbca1ef4
 API:      http://localhost:8080
 Docs:     http://localhost:8080/swagger-ui.html
+Demo:     demo-user has 5 AI_CREDITS for feature ai.chat
 ```
 
 <Warning>
@@ -31,32 +33,61 @@ These are the shared dev-quickstart credentials from
 to anything real.
 </Warning>
 
-## 2. Make your first call
+## 2. Run the working integration
+
+From the repository root, in a second terminal:
+
+```bash
+npm install
+cp examples/nextjs-ai-credits/.env.example \
+  examples/nextjs-ai-credits/.env.local
+npm run dev --workspace @tansohq/nextjs-ai-credits-example
+```
+
+Open [http://localhost:3000](http://localhost:3000). Run the request five
+times. Each successful call:
+
+1. checks the entitlement before doing billable work;
+2. runs a provider-free model stub;
+3. records usage, cost, and revenue;
+4. atomically deducts one credit.
+
+The sixth call returns `402` from the example route before the provider stub
+runs. Event ingestion remains the final enforcement boundary and returns
+`409 Conflict` if a caller races or skips the preflight check.
+
+Read
+[`app/api/generate/route.ts`](https://github.com/tansohq/tanso-oss/blob/main/examples/nextjs-ai-credits/app/api/generate/route.ts)
+for the complete check → work → record flow.
+
+## 3. Verify the Client API
 
 Client API calls authenticate with the API key, via either header:
 
 ```bash
-curl http://localhost:8080/api/v1/client/plans \
+curl "http://localhost:8080/api/v1/client/entitlements/demo-user/ai.chat?record=false" \
   -H "X-API-Key: sk_test_828df0fc77874c219f353417fbca1ef4"
 ```
 
 ```json
-{"data":{"items":[],"pagination":{"total":0,"limit":50,"offset":0,"hasMore":false}},"success":true}
+{
+  "data": {
+    "referenceCustomerId": "demo-user",
+    "featureKey": "ai.chat",
+    "credit": {
+      "denomination": "AI_CREDITS",
+      "balance": 5,
+      "hardLimit": true
+    },
+    "allowed": true
+  },
+  "success": true
+}
 ```
 
-Empty list — the seed creates an account, not a catalog. Without the key the
-same call returns `401`.
-
-## 3. Check an entitlement
-
-```bash
-curl http://localhost:8080/api/v1/client/entitlements/some_user/api-calls \
-  -H "X-API-Key: sk_test_828df0fc77874c219f353417fbca1ef4"
-```
-
-Denied, because nothing exists yet — which is the point: Tanso fails closed.
-The [billing lifecycle guide](/billing-lifecycle) walks from here to a
-subscribed customer with revenue attributed, one verified call at a time.
+Without the key, the same call returns `401`. Re-run `./setup.sh` to reset only
+the fixed demo customer's five credits. The [billing lifecycle
+guide](/billing-lifecycle) shows how to create your own catalog and customer.
 
 ## There is no signup endpoint
 
