@@ -1,24 +1,19 @@
 ---
 title: "TypeScript SDK"
-description: "Use the typed server-side client included with Tanso Core"
+description: "Use @tansohq/sdk with hosted or self-hosted Tanso"
 ---
 
-The Tanso Core repository includes a typed, dependency-free client at
-`sdks/typescript`. The runnable Next.js example consumes it as the
-`@tansohq/sdk` workspace package.
+The official [`@tansohq/sdk`](https://www.npmjs.com/package/@tansohq/sdk)
+package is typed, dependency-free, and supports Node.js 18 or newer.
 
 ```bash
-git clone https://github.com/tansohq/tanso-oss.git
-cd tanso-oss
-npm install
-npm run build --workspace @tansohq/sdk
+npm install @tansohq/sdk
 ```
 
 ```typescript
 import { TansoClient } from "@tansohq/sdk";
 
-const tanso = new TansoClient({
-  apiKey: process.env.TANSO_API_KEY!,
+const tanso = new TansoClient(process.env.TANSO_API_KEY!, {
   baseUrl: process.env.TANSO_BASE_URL ?? "http://localhost:8080",
 });
 ```
@@ -28,13 +23,16 @@ Create the client only in server-side code. A Tanso API key authenticates the
 whole account and must never enter a browser bundle.
 </Warning>
 
+For hosted Tanso, omit `baseUrl`. The SDK routes `sk_test_` keys to the sandbox
+and `sk_live_` keys to the production API.
+
 ## The integration loop
 
 ```typescript
 const requestId = crypto.randomUUID();
 
 // 1. Check before incurring provider cost.
-const decision = await tanso.evaluateEntitlement({
+const decision = await tanso.entitlements.evaluate({
   customerReferenceId: "demo-user",
   featureKey: "ai.chat",
   usage: {
@@ -55,55 +53,60 @@ if (!decision.allowed) {
 const result = await runModel();
 
 // 3. Record usage, unit economics, and one credit deduction.
-await tanso.ingestEvent(
-  {
-    customerReferenceId: "demo-user",
-    featureKey: "ai.chat",
-    eventName: "ai.chat.completed",
-    flowId: requestId,
-    usageUnits: 1,
-    costAmount: result.providerCost,
-    revenueAmount: 0.02,
-  },
-  { idempotencyKey: `usage-${requestId}` },
-);
+await tanso.events.ingest({
+  customerReferenceId: "demo-user",
+  featureKey: "ai.chat",
+  eventName: "ai.chat.completed",
+  eventIdempotencyKey: `usage-${requestId}`,
+  flowId: requestId,
+  usageUnits: 1,
+  costAmount: result.providerCost,
+  revenueAmount: 0.02,
+});
 ```
 
 ## Surface
 
-| Method | Client API operation |
-| ------ | -------------------- |
-| `createCustomer` | Create a customer |
-| `getCustomer` | Get a customer by `customerReferenceId` |
-| `checkEntitlement` | Read the current allow/deny decision |
-| `evaluateEntitlement` | Simulate requested usage before work |
-| `ingestEvent` | Record idempotent usage, cost, and revenue |
-| `listCreditPools` | List a customer's balances |
-| `getCreditPool` | Read one credit pool |
+| Resource | Methods |
+| -------- | ------- |
+| `customers` | `create`, `get`, `update` |
+| `subscriptions` | `create`, `cancel`, `revertCancellation`, `changePlan`, `cancelScheduledChange` |
+| `entitlements` | `check`, `evaluate`, `list` |
+| `events` | `ingest` |
+| `plans` | `list` |
+| `features` | `list`, `get` |
+| `credits` | `listPools`, `getPool`, `listGrants`, `listTransactions` |
+| `billing` | `listInvoices`, `markPaid`, `createCheckoutSession` |
 
 ## Errors are typed
 
 ```typescript
-import { TansoApiError } from "@tansohq/sdk";
+import {
+  TansoApiError,
+  TansoAuthenticationError,
+  TansoConflictError,
+  TansoNetworkError,
+  TansoNotFoundError,
+} from "@tansohq/sdk";
 
 try {
-  await tanso.ingestEvent(event, { idempotencyKey: eventId });
+  await tanso.events.ingest(event);
 } catch (error) {
-  if (error instanceof TansoApiError && error.status === 409) {
-    // A duplicate idempotency key or depleted hard-limit pool.
+  if (error instanceof TansoConflictError) {
+    // A duplicate eventIdempotencyKey or depleted hard-limit pool.
+  } else if (error instanceof TansoApiError) {
+    console.error(error.statusCode, error.detail);
   }
 }
 ```
 
-`TansoApiError` exposes `status`, optional `detail`, and the parsed API
-`response`.
+`TansoApiError` exposes `statusCode` and optional `detail`. Authentication,
+not-found, conflict, and network failures have their own subclasses.
 
 <Note>
-`@tansohq/sdk` currently ships in the GitHub repository, not the public npm
-registry. Use the workspace package directly or pack it for your application.
 The [included Next.js
 example](https://github.com/tansohq/tanso-oss/tree/main/examples/nextjs-ai-credits)
-is the canonical integration.
+uses the published package and is the canonical integration.
 </Note>
 
 List responses return `{ items, pagination }`. The client unwraps Tanso's
