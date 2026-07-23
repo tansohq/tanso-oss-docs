@@ -69,6 +69,28 @@ The intended pattern in your request path:
 check entitlement → serve if allowed → report event
 ```
 
+### Correlating a check to the event it authorized
+
+`POST /entitlements` (the evaluate variant, for simulating proposed usage)
+accepts an optional `context.flowId`. Pass one, or omit it and Tanso
+generates one and returns it in the response:
+
+```json
+{
+  "customerReferenceId": "cust_demo_1",
+  "featureKey": "llm.generate",
+  "context": { "flowId": "flow_chat_turn_42" }
+}
+```
+
+Reuse that same value on the `POST /events` call that reports the resulting
+usage, and the event carries it too. `flowId` is a plain, indexed string
+column on `events` — not a foreign key, just a shared value you control (or
+let Tanso mint) so you can later query "what usage came out of this check."
+It's optional, and there's no automatic join between a check and an event
+without it. The plain `GET /entitlements/{customerReferenceId}/{featureKey}`
+check doesn't take a `flowId` — only the evaluate/simulate endpoint does.
+
 ## Credit hard limits
 
 Credit deduction and depletion detection happen synchronously during event
