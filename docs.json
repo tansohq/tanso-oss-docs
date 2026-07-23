@@ -30,7 +30,8 @@
         "group": "Integrate",
         "pages": [
           "sdk",
-          "mcp"
+          "mcp",
+          "credit-forecasts"
         ]
       },
       {

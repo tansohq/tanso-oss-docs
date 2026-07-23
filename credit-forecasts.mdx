@@ -1,0 +1,160 @@
+---
+title: "Credit forecasts"
+description: "Embeddable, provider-neutral credit and usage burndown forecasting for your dashboard"
+---
+
+[`credit-estimator`](https://github.com/tansohq/credit-estimator) is a
+separate open-source project, published to npm under the `@tanso-hq` scope.
+It forecasts credit or usage runway from observed history and explicit
+low/base/high burn assumptions, and renders the result as an accessible React
+widget.
+
+It is **provider-neutral**: the deterministic core and React UI have no
+Tanso dependency and work the same way for any host. An optional adapter maps
+a Tanso snapshot into the same neutral input any other host would supply.
+
+<Note>
+This is a read-only forecasting tool. It does not own wallets, ledgers,
+usage events, entitlements, subscriptions, or payments — it projects a
+balance from data you supply. It never writes back to Tanso.
+</Note>
+
+## Packages
+
+| Package | Purpose |
+| ------- | ------- |
+| `@tanso-hq/credit-forecast-schema` | Provider-neutral Zod schemas and TypeScript contracts |
+| `@tanso-hq/credit-forecast-core` | Deterministic burndown calculation, browser and Node.js compatible |
+| `@tanso-hq/credit-burndown-react` | Controlled, accessible React components |
+| `@tanso-hq/credit-forecast-json` | Deterministic JSON import and export |
+| `@tanso-hq/credit-forecast-csv` | Portable multi-file CSV import and export |
+| `@tanso-hq/credit-forecast-tanso` | Optional Tanso snapshot-to-neutral mapping |
+
+All are ESM-only; CommonJS hosts need dynamic `import()`. React peers are
+`^18.2 || ^19`.
+
+## Calculate a forecast
+
+```bash
+npm install @tanso-hq/credit-forecast-core
+```
+
+```typescript
+import { forecastCreditUsage } from "@tanso-hq/credit-forecast-core";
+
+const result = forecastCreditUsage({
+  schemaVersion: "1.0",
+  methodologyVersion: "1.0",
+  asOf: "2026-01-03",
+  period: {
+    startDate: "2026-01-01",
+    endDate: "2026-01-06",
+    allocation: "500",
+    lowBalanceThreshold: "50",
+  },
+  lookbackDays: 2,
+  dailyUsage: [
+    { date: "2026-01-01", creditsUsed: "40" },
+    { date: "2026-01-02", creditsUsed: "60" },
+  ],
+  balance: { current: "400", schedule: [] },
+  scenarios: [
+    { key: "low", burnMultiplier: "0.75" },
+    { key: "base", burnMultiplier: "1" },
+    { key: "high", burnMultiplier: "1.5" },
+  ],
+});
+```
+
+All credit values are canonical decimal strings, not floats. The core reads
+no clock, filesystem, network, or credentials — `asOf` is explicit, and
+invalid input throws a structured `ForecastValidationError`.
+
+## Embed the widget
+
+```bash
+npm install @tanso-hq/credit-burndown-react
+```
+
+```tsx
+import { forecastCreditUsage } from "@tanso-hq/credit-forecast-core";
+import { CreditBurndown } from "@tanso-hq/credit-burndown-react";
+import "@tanso-hq/credit-burndown-react/styles.css";
+
+const result = forecastCreditUsage(input);
+
+<CreditBurndown.Root input={input} result={result}>
+  <CreditBurndown.Summary />
+  <CreditBurndown.Chart />
+  <CreditBurndown.Scenarios />
+  <CreditBurndown.Warnings />
+  <CreditBurndown.Breakdown />
+</CreditBurndown.Root>;
+```
+
+The component is result-controlled: you calculate (in your browser or your
+backend) and pass both `input` and `result` in as props. It has no fetch,
+authentication, persistence, or billing dependency, so it never resolves a
+stale forecast on its own. Theme it with the `--credit-burndown-*` CSS
+variables, override any message string, inject your own action slot, and
+control the selected scenario from outside.
+
+## Feeding it from Tanso
+
+`@tanso-hq/credit-forecast-tanso` maps a Tanso snapshot plus explicit
+assumptions into the same `ForecastInput` any other host would build by hand:
+
+```typescript
+import { forecastCreditUsage } from "@tanso-hq/credit-forecast-core";
+import {
+  mapTansoSnapshotToForecastInput,
+  type TansoForecastAssumptions,
+  type TansoForecastSnapshot,
+} from "@tanso-hq/credit-forecast-tanso";
+
+const snapshot: TansoForecastSnapshot = {
+  sourceSchemaVersion: "1.0",
+  asOf: "2026-01-03",
+  currentBalance: "400",
+  dailyUsage: [
+    { date: "2026-01-01", creditsUsed: "40" },
+    { date: "2026-01-02", creditsUsed: "60" },
+  ],
+};
+
+const assumptions: TansoForecastAssumptions = {
+  schemaVersion: "1.0",
+  methodologyVersion: "1.0",
+  period: {
+    startDate: "2026-01-01",
+    endDate: "2026-01-06",
+    allocation: "500",
+    lowBalanceThreshold: "50",
+  },
+  lookbackDays: 2,
+  scheduledBalanceDeltas: [],
+  scenarioMultipliers: { low: "0.75", base: "1", high: "1.5" },
+};
+
+const input = mapTansoSnapshotToForecastInput(snapshot, assumptions);
+const result = forecastCreditUsage(input);
+```
+
+<Warning>
+The adapter does not fetch data, call a Tanso API, or reconstruct a
+balance — you assemble `snapshot` from your own authenticated call to the
+[credits Client API](/credits), such as a pool's
+`/pools/{poolId}/transactions` history. There is no automatic Tanso source
+connector. Mapping failures throw `TansoMappingError`, whose `toJSON()`
+returns `{ code: "TANSO_MAPPING_FAILED", issues }`.
+</Warning>
+
+Tanso remains authoritative for actual balances, grants, deductions, and
+billing state. The forecast is a projection from the snapshot you supplied at
+call time — if it and Tanso's current state have since diverged, refetch the
+snapshot and recalculate. Nothing in this package reserves credits, alters an
+entitlement decision, or writes back to the ledger.
+
+See the
+[optional Tanso adapter boundary](https://github.com/tansohq/credit-estimator/blob/main/docs/tanso-integration.md)
+for the full contract, including what the adapter is forbidden from doing.
