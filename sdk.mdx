@@ -23,8 +23,9 @@ Create the client only in server-side code. A Tanso API key authenticates the
 whole account and must never enter a browser bundle.
 </Warning>
 
-For hosted Tanso, omit `baseUrl`. The SDK routes `sk_test_` keys to the sandbox
-and `sk_live_` keys to the production API.
+Tanso is self-hosted, so `baseUrl` points at your own instance. From SDK 0.2.2
+the default is `http://localhost:8080` — the quickstart compose stack — so
+local development works with no configuration.
 
 ## The integration loop
 
