@@ -40,6 +40,18 @@ credit expiration run as in-process scheduled jobs (ShedLock-guarded, so
 multiple instances won't double-fire). Default crons live in
 `application.yaml` under `jobs:`.
 
+## Admin console
+
+`ui/` in the repo is a Next.js app covering the JWT admin surface — catalog,
+customers, subscriptions, credits, invoices, events, and margin analytics.
+`npm run dev:ui` runs it in development; for a production build, `npm run
+build --workspace @tansohq/ui` then `npm run start --workspace @tansohq/ui`.
+
+One variable matters: `TANSO_BASE_URL`, the API address the Next.js server
+proxies to (default `http://localhost:8080`). API calls go through that
+same-origin proxy, so the API's CORS configuration needs no changes for the
+console.
+
 ## Production checklist
 
 - Change the seeded test account credentials and API key — they are public

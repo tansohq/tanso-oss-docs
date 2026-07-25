@@ -60,7 +60,27 @@ Read
 [`app/api/generate/route.ts`](https://github.com/tansohq/tanso-oss/blob/main/examples/nextjs-ai-credits/app/api/generate/route.ts)
 for the complete check → work → record flow.
 
-## 3. Verify the Client API
+## 3. Open the admin console
+
+The repo also ships a web console for the operator side of the same instance.
+From the repository root:
+
+```bash
+npm run dev:ui
+```
+
+Sign in with the seeded `test` / `password` login. The console prints its URL —
+[http://localhost:3000](http://localhost:3000), or the next free port if the
+example app is still holding 3000.
+
+You'll see the seeded catalog (the `developer_demo` plan and its `ai.chat`
+rule), the demo customer with its credit pool and transaction ledger, and every
+event the example just recorded — cost and revenue on each row. The console
+talks to the API through a same-origin proxy, so no CORS configuration is
+needed. Details in
+[`ui/README.md`](https://github.com/tansohq/tanso-oss/blob/main/ui/README.md).
+
+## 4. Verify the Client API
 
 Client API calls authenticate with the API key, via either header:
 
