@@ -39,6 +39,7 @@ const decision = await tanso.entitlements.evaluate({
   usage: {
     eventName: "ai.chat.generate",
     usageUnits: 1,
+    model: "gpt-4.1-mini", // selects the credit weight row (sdk >= 0.3.0)
   },
   context: {
     idempotencyKey: `check-${requestId}`,
@@ -49,6 +50,8 @@ const decision = await tanso.entitlements.evaluate({
 if (!decision.allowed) {
   return deny(decision.meta?.reason?.description);
 }
+// decision.creditQuote holds what this would burn — a quote, not a promise;
+// the charge resolves at the event's occurredAt. See /credit-weights.
 
 // 2. Perform the billable work.
 const result = await runModel();
