@@ -29,6 +29,11 @@ An event is one unit of usage. The minimal shape:
   and per-customer margin falls out of the same ledger that bills.
 - **Revenue is computed at ingestion** from the plan's pricing rule and
   stored on the event, not reconstructed at invoice time.
+- **Credit-backed features return a deduction receipt.** When the feature is
+  backed by a credit model, the ingestion response includes
+  `creditsDeducted`, `weightApplied`, `weightId`, `weightMatch`, and
+  `remainingBalance` — see [Credit weights](/credit-weights). The fields are
+  absent otherwise.
 
 For AI usage, the cost portion of an event looks like this:
 
@@ -68,6 +73,15 @@ The intended pattern in your request path:
 ```
 check entitlement → serve if allowed → report event
 ```
+
+### Quoting the credit cost of a proposed action
+
+`POST /entitlements` (evaluate) accepts `usage.model` and returns a
+`creditQuote` — the weight that would apply and the credits the proposed
+usage would burn. The `model` string must exactly match the
+`costInput.model` you'll send on the event. The quote resolves at request
+time; the charge resolves at the event's `occurredAt` — a quote, not a
+promise. Details in [Credit weights](/credit-weights).
 
 ### Correlating a check to the event it authorized
 

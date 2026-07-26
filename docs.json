@@ -23,7 +23,8 @@
         "pages": [
           "billing-lifecycle",
           "metering-and-entitlements",
-          "credits"
+          "credits",
+          "credit-weights"
         ]
       },
       {

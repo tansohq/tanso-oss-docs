@@ -1,0 +1,117 @@
+---
+title: "Credit weights"
+description: "The server-side tariff: how many credits one usage unit burns, per feature and model"
+---
+
+By default one usage unit burns one credit. The weight table lets you change
+that server-side — "a `deep-research` call costs 5 credits, and 8 when it runs
+on `gpt-4.1`" — without redeploying your client. Requires `@tansohq/sdk` >=
+0.3.0 for typed access; the raw API works from any version.
+
+## Resolution
+
+Weights resolve most-specific first, at the event's `occurredAt`:
+
+1. `(feature, model)` — exact match on the model string
+2. `(feature, any model)` — the feature's default row
+3. `1.0` — identity, when no row exists
+
+Model matching is **exact**, unlike cost resolution (which fuzzy-matches
+model names). The `model` you send on evaluate and the `costInput.model` you
+send on ingest must be the same string, or the charge silently falls back to
+the feature default.
+
+Charge = `usageUnits × weight`, rounded once before the pool draw-down.
+Every response tells you which row matched via `weightMatch`:
+`MODEL`, `FEATURE_DEFAULT`, or `NONE`.
+
+## Publishing a tariff
+
+Use the console (**Credits → Weights**) or the admin API:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/monetization/credits/weights/publish \
+  -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \
+  -d '{
+    "effectiveFrom": "2026-08-01T00:00:00Z",
+    "entries": [
+      {"featureId": "…", "creditsPerUnit": 5},
+      {"featureId": "…", "model": "gpt-4.1", "creditsPerUnit": 8}
+    ]
+  }'
+```
+
+The rules that keep a tariff trustworthy:
+
+- **One batch, one effective time.** All entries share `effectiveFrom`, applied
+  in one transaction — there is no window where half the tariff is live.
+- **`effectiveFrom` must be in the future.** The settled ledger is never
+  repriced. Publishing "as of yesterday" is rejected with `400`.
+- **Effective rows are append-only.** To change a price, publish a new row
+  with a later effective time. Only rows that haven't taken effect yet can be
+  deleted (`DELETE /weights/{id}`, the correction path for a fat-fingered
+  future tariff).
+- **Same-instant collisions return `409`.** An identical replay of the same
+  batch is an idempotent no-op; a *different* batch at the same instant is
+  rejected.
+- Weights are positive, at most 6 decimals, capped at 1,000,000. If you find
+  yourself needing `0.1`, your credit denomination is 10× too large.
+
+## Quote, then record
+
+Ask what an action would burn before doing the billable work:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/client/entitlements \
+  -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"customerReferenceId":"demo-user","featureKey":"ai.chat",
+       "usage":{"usageUnits":1,"model":"gpt-4.1"}}'
+```
+
+```json
+{"data":{"allowed":true,
+  "creditQuote":{"weight":8,"estimatedCredits":8,
+    "weightId":"…","weightMatch":"MODEL"}},"success":true}
+```
+
+The quote is **a quote, not a promise**. It resolves at request time; the
+charge resolves at the event's `occurredAt`. A tariff cutover between the two
+can change the outcome — by design, so that a burst of pre-cutover checks
+can't lock in pre-cutover prices indefinitely.
+
+Ingestion returns the receipt:
+
+```json
+{"data":{"creditsDeducted":8,"weightApplied":8,"weightId":"…",
+  "weightMatch":"MODEL","remainingBalance":42},"success":true}
+```
+
+These fields are absent when the feature isn't backed by a credit model.
+
+Events are never rejected on `occurredAt` — timestamps are clamped to
+`[now − 48h, now + 5min]` for weight resolution, so backfills and webhook
+retries keep working; a stale replay can't reach an old, cheaper rate.
+
+## Migrating an existing integration
+
+This is the one place you can double-charge your customers, so read it before
+publishing your first tariff.
+
+If the weight table didn't exist when you integrated, your client probably
+sends **pre-multiplied units**: `usageUnits: 5` for a "5-credit action",
+because that was the only lever. If you publish a `weight: 5` tariff while
+that client is still deployed, the server multiplies your multiplied number —
+a 25-credit charge for a 5-credit action.
+
+The safe order:
+
+1. **Deploy the client change first** — send raw usage units (`usageUnits: 1`).
+2. **Accept the gap.** Until the tariff is published, raw units burn at the
+   identity weight of 1.0. That's an undercharge — annoying, bounded, and
+   safe. The reverse order is an overcharge to real customers.
+3. **Publish the tariff** with a future `effectiveFrom`.
+
+Repricing `usageUnits` semantics is an **account-wide event**, not just a
+weight-table change. Everything calibrated against the old numbers needs
+re-checking in the same cutover: `maxUsage` caps on plan rules, Stripe meter
+prices, and credit grant sizing.

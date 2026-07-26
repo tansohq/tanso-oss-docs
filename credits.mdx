@@ -26,7 +26,9 @@ defined order.
 
 When an event arrives for a feature backed by a credit model, credits are
 deducted synchronously at ingestion, FIFO across grants and respecting draw
-priority. The deduction is stamped into the event's context, and
+priority. The amount is `usageUnits × weight`, where the weight comes from
+the server-side tariff — see [Credit weights](/credit-weights). With no
+tariff published, one unit burns one credit. The deduction is stamped into the event's context, and
 credit-covered usage is excluded from Stripe meter forwarding so it isn't
 billed twice.
 
