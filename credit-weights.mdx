@@ -57,6 +57,11 @@ The rules that keep a tariff trustworthy:
 - Weights are positive, at most 6 decimals, capped at 1,000,000. If you find
   yourself needing `0.1`, your credit denomination is 10× too large.
 
+Trying it out: since `effectiveFrom` must be in the future, publish your test
+tariff a minute out and wait for it — there is no "effective immediately."
+That friction is the feature: production tariffs get the same deliberate
+cutover.
+
 ## Quote, then record
 
 Ask what an action would burn before doing the billable work:
