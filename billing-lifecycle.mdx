@@ -16,7 +16,7 @@ Assumes the [quickstart](/quickstart) stack and its seeded credentials.
 ```bash
 curl -X POST http://localhost:8080/api/v1/monetization/features \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"API Calls","key":"api-calls","featureType":"METERED"}'
+  -d '{"name":"API Calls","key":"api-calls","description":"Metered API calls","featureType":"METERED"}'
 ```
 
 ## 2. Create a plan — it starts as a DRAFT
