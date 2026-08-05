@@ -24,7 +24,7 @@ curl -X POST http://localhost:8080/api/v1/monetization/features \
 ```bash
 curl -X POST http://localhost:8080/api/v1/monetization/plans \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"key":"starter","name":"Starter","priceAmount":10.00,"intervalMonths":1}'
+  -d '{"key":"starter","name":"Starter","description":"Starter tier","priceAmount":10.00,"intervalMonths":1}'
 ```
 
 <Note>
@@ -62,8 +62,12 @@ returns a specific error naming the missing field if you omit either.
 ```bash
 curl -X PATCH http://localhost:8080/api/v1/monetization/plans/<plan-id> \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"status":"ACTIVE"}'
+  -d '{"status":"ACTIVE","description":"Starter tier"}'
 ```
+
+Activation is guarded: the plan must have at least one linked feature (step 3)
+and a non-empty description, or the API returns an error naming what's
+missing.
 
 ## 5. Create a customer — keyed by your ID
 
@@ -99,9 +103,18 @@ curl -X POST http://localhost:8080/api/v1/client/billing/invoices/<invoice-id>/m
   -H "X-API-Key: $KEY"
 ```
 
-This activates the subscription and grants its entitlements. (With Stripe
-connected, payment flows through Stripe checkout/webhooks instead, and
-`mark-paid` is rejected.)
+This activates the subscription and grants its entitlements.
+
+With Stripe connected, behavior depends on the account's Stripe mode:
+
+- **Tanso handles billing** (`PAYMENT_PASS_THROUGH`) — Tanso stays the source
+  of truth. `mark-paid` still works, or fetch a hosted payment page with
+  `POST /api/v1/client/billing/subscriptions/<subscription-id>/stripe/checkout`
+  and let the `invoice.paid` webhook settle it.
+- **Stripe drives billing** (`STRIPE_INTEGRATION`) — subscribing a paid plan
+  returns a Stripe Checkout URL instead of creating the subscription
+  immediately; the subscription is created by webhook once the customer pays,
+  and `mark-paid` is rejected.
 
 ## 8. Check the entitlement — now allowed
 
