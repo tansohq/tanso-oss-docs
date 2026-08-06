@@ -15,6 +15,21 @@ APP_MCP_ENABLED=true
 SPRING_AI_MCP_SERVER_ENABLED=true
 ```
 
+The tenant-configuration tools (`Admin*` — plans, rules, credit tariffs and
+prices — plus Stripe setup) require a third, separate opt-in:
+
+```bash
+APP_MCP_ADMIN_TOOLS_ENABLED=true
+```
+
+Leave it off unless every holder of a client API key is the operator. This
+gate is what lets you hand an MCP endpoint to an end customer's agent: with
+it off, a customer-scoped (`ck_`) key reaches only the curated customer
+tools — `listPlans`, `getCreditPrices`, `checkEntitlement`,
+`getUsageForecast`, `subscribePlan`, `purchaseCredits` (spend tools require
+`confirmAction: true`) — pinned to its own customer. See
+[Agent-serve](/agent-serve).
+
 Then connect any MCP client to `/mcp`:
 
 ```bash

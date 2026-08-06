@@ -1,0 +1,130 @@
+---
+title: "Agent-serve"
+description: "Make your product buyable by AI agents: machine-readable pricing, programmatic signup, scoped keys, off-session payments, and a burndown API"
+---
+
+Self-serve funnels assume hands and eyeballs — signup forms, checkout pages,
+email loops. An AI agent either completes your funnel programmatically or it
+doesn't convert. Tanso gives the product you build on it an agent-facing
+surface out of the box: your customers' buying agents can discover pricing,
+sign up, pay, and monitor usage without a human touching anything.
+
+Everything here is **opt-in per account** and fails closed: until you set a
+slug and flip the toggles, none of these surfaces exist.
+
+## 1. Discover: machine-readable pricing
+
+```bash
+curl https://YOUR-INSTANCE/public/v1/catalog/{slug}/pricing.json
+```
+
+No authentication. Returns your ACTIVE plans (price, interval, features,
+included credits), the current credit weight table and price book, governance
+flags, and integration pointers, in the
+[agent-serve pricing.json schema](https://github.com/katrinalaszlo/agent-serve).
+Enable it in settings: set a `slug` and `publicCatalogEnabled`. An unknown
+slug and a disabled catalog return the same 404.
+
+## 2. Sign up: one call, no CAPTCHA
+
+```bash
+curl -X POST https://YOUR-INSTANCE/public/v1/catalog/{slug}/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "principal@example.com"}'
+```
+
+Returns a customer (`agent_…` reference ID), a subscription to your
+designated **free** default plan, and a customer-scoped API key — once.
+Enable with `agentSignupEnabled` + `agentSignupDefaultPlanId` (validated
+free and ACTIVE at save). An hourly per-account cap returns `429` with
+`Retry-After`.
+
+## 3. Scoped keys
+
+Customer-scoped keys (`ck_live_…`/`ck_test_…`) are pinned to one customer
+and carry scopes: `read` (balances, entitlements, usage) and `purchase`
+(actions that spend money). Endpoints not deliberately opened to customer
+keys deny them — a leaked agent key cannot see other customers or touch
+tenant configuration.
+
+Tenants manage keys with their own `sk_` key:
+
+```bash
+POST   /api/v1/client/customers/{ref}/keys              # create (plaintext once)
+GET    /api/v1/client/customers/{ref}/keys              # list (hints only)
+POST   /api/v1/client/customers/{ref}/keys/{id}/rotate  # rotate that one key
+DELETE /api/v1/client/customers/{ref}/keys/{id}         # revoke
+```
+
+## 4. Pay: off-session with a saved card, 402 fallback without
+
+**Pre-authorize once** (SetupIntent — card data never touches Tanso):
+
+```bash
+POST /api/v1/client/customers/{ref}/payment-methods/setup-intent
+# → {setup_intent_id, client_secret}  — principal confirms with Stripe
+POST /api/v1/client/customers/{ref}/payment-methods/default
+# → {"paymentMethodId": "pm_..."}
+```
+
+**Subscribe** (`POST /api/v1/client/subscriptions`) with a saved or supplied
+`paymentMethodId` charges off-session and returns the created subscription
+synchronously. Without one, customer-key callers get **HTTP 402**
+(`payment_required`) carrying a hosted `checkoutUrl` for the principal plus
+a `checkoutSessionId` to poll:
+
+```bash
+GET /api/v1/client/checkout-sessions/{id}
+# → {"status": "PENDING" | "COMPLETED", "subscriptionId": ...}
+```
+
+**Buy credits** at the current price book rate:
+
+```bash
+POST /api/v1/client/credits/purchases
+# {"creditPoolId": "...", "credits": 1000, "paymentMethodId": "pm_..."}
+```
+
+Success grants a `PURCHASED` credit grant stamped at book price, idempotent
+by payment intent. The same 402 + polling fallback applies. Every
+agent-initiated charge is checked against the account's spend cap
+(`agentMaxTopupAmount`) **before** money moves.
+
+## 5. Use: pre-flight quotes and the burndown API
+
+Entitlement checks return a `creditQuote` with estimated credits and cost —
+an agent can ask "what will this run cost me, and can I afford it" before
+doing the work. For the standing question — *when do I run out* —:
+
+```bash
+GET /api/v1/client/customers/{ref}/usage
+```
+
+Per-feature current-period usage with a linear end-of-period projection,
+and per-pool credit balances with average daily burn, projected depletion
+date, and the current credit price.
+
+## Dev readiness
+
+- Every error carries a stable `code` (`unauthorized`, `payment_required`,
+  `insufficient_credits`, `idempotency_conflict`, …) in one envelope shape —
+  branch on codes, not messages.
+- Mutating client-API requests accept an `Idempotency-Key` header: identical
+  retries within 24h replay the stored response; a reused key with a
+  different body returns `409 idempotency_conflict`.
+- OpenAPI at `/v3/api-docs`, Swagger UI at `/swagger-ui.html`.
+
+## MCP for customer agents
+
+The [MCP server](/mcp) includes a curated customer-facing tool set that works
+with `ck_` keys: `listPlans`, `getCreditPrices`, `checkEntitlement`,
+`getUsageForecast`, `subscribePlan`, `purchaseCredits`. Spend tools require
+`confirmAction: true`. Tenant-configuration tools (`Admin*`, Stripe setup)
+are gated behind `app.mcp.admin-tools.enabled` (default false) so an agent
+key can never reconfigure your pricing.
+
+## Deliberately not yet
+
+Rate-limit headers, outbound webhooks (usage thresholds, spend alerts),
+per-key budgets, Web Bot Auth, and A2A agent cards are roadmap. The
+`governance` block in pricing.json reports only what is true.

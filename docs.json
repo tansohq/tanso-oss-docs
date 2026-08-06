@@ -25,7 +25,8 @@
           "metering-and-entitlements",
           "credits",
           "credit-weights",
-          "credit-prices"
+          "credit-prices",
+          "agent-serve"
         ]
       },
       {
