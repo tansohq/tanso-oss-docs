@@ -4,7 +4,7 @@ description: "Embeddable, provider-neutral credit and usage burndown forecasting
 ---
 
 [`credit-estimator`](https://github.com/tansohq/credit-estimator) is a
-separate open-source project, published to npm under the `@tanso-hq` scope.
+separate open-source project, published to npm under the `@tansohq` scope.
 It forecasts credit or usage runway from observed history and explicit
 low/base/high burn assumptions, and renders the result as an accessible React
 widget.
@@ -23,12 +23,12 @@ balance from data you supply. It never writes back to Tanso.
 
 | Package | Purpose |
 | ------- | ------- |
-| `@tanso-hq/credit-forecast-schema` | Provider-neutral Zod schemas and TypeScript contracts |
-| `@tanso-hq/credit-forecast-core` | Deterministic burndown calculation, browser and Node.js compatible |
-| `@tanso-hq/credit-burndown-react` | Controlled, accessible React components |
-| `@tanso-hq/credit-forecast-json` | Deterministic JSON import and export |
-| `@tanso-hq/credit-forecast-csv` | Portable multi-file CSV import and export |
-| `@tanso-hq/credit-forecast-tanso` | Optional Tanso snapshot-to-neutral mapping |
+| `@tansohq/credit-forecast-schema` | Provider-neutral Zod schemas and TypeScript contracts |
+| `@tansohq/credit-forecast-core` | Deterministic burndown calculation, browser and Node.js compatible |
+| `@tansohq/credit-burndown-react` | Controlled, accessible React components |
+| `@tansohq/credit-forecast-json` | Deterministic JSON import and export |
+| `@tansohq/credit-forecast-csv` | Portable multi-file CSV import and export |
+| `@tansohq/credit-forecast-tanso` | Optional Tanso snapshot-to-neutral mapping |
 
 All are ESM-only; CommonJS hosts need dynamic `import()`. React peers are
 `^18.2 || ^19`.
@@ -36,11 +36,11 @@ All are ESM-only; CommonJS hosts need dynamic `import()`. React peers are
 ## Calculate a forecast
 
 ```bash
-npm install @tanso-hq/credit-forecast-core
+npm install @tansohq/credit-forecast-core
 ```
 
 ```typescript
-import { forecastCreditUsage } from "@tanso-hq/credit-forecast-core";
+import { forecastCreditUsage } from "@tansohq/credit-forecast-core";
 
 const result = forecastCreditUsage({
   schemaVersion: "1.0",
@@ -73,13 +73,13 @@ invalid input throws a structured `ForecastValidationError`.
 ## Embed the widget
 
 ```bash
-npm install @tanso-hq/credit-burndown-react
+npm install @tansohq/credit-burndown-react
 ```
 
 ```tsx
-import { forecastCreditUsage } from "@tanso-hq/credit-forecast-core";
-import { CreditBurndown } from "@tanso-hq/credit-burndown-react";
-import "@tanso-hq/credit-burndown-react/styles.css";
+import { forecastCreditUsage } from "@tansohq/credit-forecast-core";
+import { CreditBurndown } from "@tansohq/credit-burndown-react";
+import "@tansohq/credit-burndown-react/styles.css";
 
 const result = forecastCreditUsage(input);
 
@@ -101,16 +101,16 @@ control the selected scenario from outside.
 
 ## Feeding it from Tanso
 
-`@tanso-hq/credit-forecast-tanso` maps a Tanso snapshot plus explicit
+`@tansohq/credit-forecast-tanso` maps a Tanso snapshot plus explicit
 assumptions into the same `ForecastInput` any other host would build by hand:
 
 ```typescript
-import { forecastCreditUsage } from "@tanso-hq/credit-forecast-core";
+import { forecastCreditUsage } from "@tansohq/credit-forecast-core";
 import {
   mapTansoSnapshotToForecastInput,
   type TansoForecastAssumptions,
   type TansoForecastSnapshot,
-} from "@tanso-hq/credit-forecast-tanso";
+} from "@tansohq/credit-forecast-tanso";
 
 const snapshot: TansoForecastSnapshot = {
   sourceSchemaVersion: "1.0",
