@@ -8,6 +8,10 @@ that server-side — "a `deep-research` call costs 5 credits, and 8 when it runs
 on `gpt-4.1`" — without redeploying your client. Requires `@tansohq/sdk` >=
 0.3.0 for typed access; the raw API works from any version.
 
+The weight table is one of two pricing dials: it sets how many credits an
+action burns. What one credit costs in money is the
+[price book](/credit-prices), versioned and published the same way.
+
 ## Resolution
 
 Weights resolve most-specific first, at the event's `occurredAt`:
@@ -76,7 +80,8 @@ curl -X POST http://localhost:8080/api/v1/client/entitlements \
 ```json
 {"data":{"allowed":true,
   "creditQuote":{"weight":8,"estimatedCredits":8,
-    "weightId":"…","weightMatch":"MODEL"}},"success":true}
+    "weightId":"…","weightMatch":"MODEL",
+    "pricePerCredit":0.01,"currency":"USD","estimatedCost":0.08}},"success":true}
 ```
 
 The quote is **a quote, not a promise**. It resolves at request time; the

@@ -70,6 +70,63 @@ All credit values are canonical decimal strings, not floats. The core reads
 no clock, filesystem, network, or credentials — `asOf` is explicit, and
 invalid input throws a structured `ForecastValidationError`.
 
+## Plan credits before committing
+
+The same core package answers the buyer-side question — "how many credits
+does this period need?" — with no usage history:
+
+```typescript
+import { planCreditUsage } from "@tansohq/credit-forecast-core";
+
+const plan = planCreditUsage({
+  schemaVersion: "1.0",
+  methodologyVersion: "1.0",
+  period: { startDate: "2026-02-01", endDate: "2026-03-01" },
+  metricEstimates: [
+    { key: "api-calls", label: "API calls", estimatedUnits: "1000", creditsPerUnit: "0.5" },
+    { key: "reports", label: "Generated reports", estimatedUnits: "20", creditsPerUnit: "5" },
+  ],
+  allocation: "700",
+  scenarios: [
+    { key: "low", burnMultiplier: "0.8" },
+    { key: "base", burnMultiplier: "1" },
+    { key: "high", burnMultiplier: "1.25" },
+  ],
+});
+```
+
+Each metric's planned credits is `estimatedUnits × creditsPerUnit`, scenarios
+scale that by their multipliers, and the optional `allocation` yields
+utilization, surplus or shortfall, and a
+`WITHIN_ALLOCATION` / `OVER_ALLOCATION` status per scenario. Everything is an
+explicit input — the calculator never recommends weights or allocations,
+never produces money amounts, and never predicts usage from history. Invalid
+input throws a structured `PlanValidationError`.
+
+For a Tanso host, no adapter is needed: `creditsPerUnit` is the resolved
+weight your [tariff](/credit-weights) returns as `creditQuote.weight`, and
+`allocation` is the candidate credit grant.
+
+The React package renders it with buyer-facing defaults (Conservative /
+Expected / Aggressive scenario labels, an allocation meter, a per-metric
+breakdown, and the calculation trace):
+
+```tsx
+import { planCreditUsage } from "@tansohq/credit-forecast-core";
+import { CreditPlan } from "@tansohq/credit-burndown-react";
+import "@tansohq/credit-burndown-react/styles.css";
+
+const result = planCreditUsage(input);
+
+<CreditPlan.Root input={input} result={result}>
+  <CreditPlan.Summary />
+  <CreditPlan.Scenarios />
+  <CreditPlan.Breakdown />
+  <CreditPlan.Warnings />
+  <CreditPlan.Trace />
+</CreditPlan.Root>;
+```
+
 ## Embed the widget
 
 ```bash

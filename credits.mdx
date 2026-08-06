@@ -53,6 +53,9 @@ curl http://localhost:8080/api/v1/client/credits/{customerReferenceId}/pools/{po
   -H "X-API-Key: $KEY"
 curl http://localhost:8080/api/v1/client/credits/{customerReferenceId}/pools/{poolId}/transactions \
   -H "X-API-Key: $KEY"
+
+# Current list price of one credit, per denomination (see /credit-prices)
+curl http://localhost:8080/api/v1/client/credits/prices -H "X-API-Key: $KEY"
 ```
 
 Pool and grant management (creating models, granting credits, reversing
@@ -61,7 +64,13 @@ tools.
 
 ## Design notes worth knowing
 
-- **Deduction assumes 1:1** between usage units and the credit denomination.
+- **Deduction is 1:1 by default** between usage units and the credit
+  denomination; a published [weight tariff](/credit-weights) changes that
+  server-side.
+- **Purchased grants carry their sale price.** A `PURCHASED` grant without an
+  explicit `unitPrice` is stamped with the current
+  [price book](/credit-prices) entry for the pool's denomination; an explicit
+  `unitPrice` (a negotiated top-up) always wins.
 - **Expiry is a scheduled job** (`CreditExpirationJob`): expired grants move
   their remainder to the pool's `total_expired`, visible in the ledger.
 - **Plan-included credits** are granted on subscription cycle rollover and

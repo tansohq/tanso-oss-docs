@@ -1,0 +1,80 @@
+---
+title: "Credit prices"
+description: "The price book: what one credit costs the buyer, per denomination — the second pricing dial"
+---
+
+Credit pricing has two independent dials. The
+[weight table](/credit-weights) sets how many credits an action burns; the
+price book sets what one credit costs in money. Keeping them separate means
+you can reprice credits without touching plans, allocations, or weights — and
+when a price moves, it's unambiguous which dial moved.
+
+The price book holds one current price per `(account, denomination)`:
+a `pricePerCredit` and an ISO 4217 currency, versioned by `effectiveFrom`.
+A denomination with no published price is simply unpriced — nothing invents
+a price for it.
+
+## Publishing prices
+
+Use the console (**Credits → Pricing**) or the admin API:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/monetization/credits/prices/publish \
+  -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \
+  -d '{
+    "effectiveFrom": "2026-09-01T00:00:00Z",
+    "entries": [
+      {"denomination": "credits", "pricePerCredit": 0.01, "currency": "USD"}
+    ]
+  }'
+```
+
+The rules are the same ones that keep the weight tariff trustworthy:
+
+- **One batch, one effective time.** All entries share `effectiveFrom` and
+  land in one transaction.
+- **`effectiveFrom` must be in the future.** The settled price book is never
+  rewritten; publishing "as of yesterday" is rejected with `400`.
+- **Effective rows are append-only.** To change a price, publish a new row
+  with a later effective time. Only rows that haven't taken effect yet can
+  be deleted (`DELETE /prices/{id}`).
+- **Same-instant collisions return `409`.** An identical replay of the same
+  batch is an idempotent no-op; a different batch at the same instant is
+  rejected.
+- Prices are positive, at most 6 decimals, capped at 1,000,000. Each
+  `denomination` must match a credit model on your account, and `currency`
+  defaults to `USD`.
+
+Read it back with `GET /api/v1/monetization/credits/prices` (current and
+scheduled rows) or
+`GET /api/v1/monetization/credits/prices/history?denomination=credits`.
+
+## Where the price shows up
+
+**Entitlement quotes.** When the denomination is priced, the `creditQuote` on
+an entitlement check carries the money view alongside the credit view:
+
+```json
+{"creditQuote":{"weight":8,"estimatedCredits":8,
+  "pricePerCredit":0.01,"currency":"USD","estimatedCost":0.08}}
+```
+
+`estimatedCost` is `estimatedCredits × pricePerCredit`. All three fields are
+null when the denomination is unpriced.
+
+**Purchased grants.** A grant with `grantType: "PURCHASED"` and no explicit
+`unitPrice` is stamped with the book price current at grant time, so every
+sale carries the price it happened at even after the book moves. An explicit
+`unitPrice` on the grant request (a negotiated top-up) always wins; sending
+`currency` without `unitPrice` is rejected.
+
+**Client API.** Integrators can read the current list prices to render
+"buy credits" UI:
+
+```bash
+curl http://localhost:8080/api/v1/client/credits/prices -H "X-API-Key: $KEY"
+```
+
+This returns only prices already in effect — scheduled future changes are
+not visible to API keys. Per-grant negotiated prices are never in the book;
+they live on the grant.

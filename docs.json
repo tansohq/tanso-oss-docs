@@ -24,7 +24,8 @@
           "billing-lifecycle",
           "metering-and-entitlements",
           "credits",
-          "credit-weights"
+          "credit-weights",
+          "credit-prices"
         ]
       },
       {
