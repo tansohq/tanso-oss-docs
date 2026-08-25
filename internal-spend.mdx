@@ -16,7 +16,15 @@ usage and cost reports the vendor already keeps. Everything lives under
 Switch the whole half off with `APP_MODULES_BUILD_ENABLED=false` — the routes
 return `404` and the console hides the section.
 
+<Frame caption="Spend → Usage: what your org sent each vendor, priced two ways">
+  <img src="/images/console/spend-usage.png" alt="Internal AI usage by model, person and day" />
+</Frame>
+
 ## 1. Connect a vendor
+
+<Frame>
+  <img src="/images/console/spend-connections.png" alt="Vendor connections with status, last sync, check and sync actions" />
+</Frame>
 
 **Spend → Connections → Connect vendor.** Paste an Anthropic admin key
 (`sk-ant-admin01-…`, created under Console → Settings → Organization) or an
@@ -83,6 +91,10 @@ GET /api/v1/spend/reports/usage?from=2026-08-01&to=2026-09-01   # to is exclusiv
 
 ## 3. Reconcile
 
+<Frame>
+  <img src="/images/console/spend-reconcile.png" alt="Reconcile: metered vs vendor-reported vs invoiced per vendor" />
+</Frame>
+
 **Spend → Reconcile** compares one period three ways per vendor: metered,
 vendor-reported, and invoiced, with the two variances. Dates here are
 inclusive — invoices are dated, not timestamped.
@@ -102,6 +114,10 @@ GET /api/v1/spend/reports/reconcile?from=2026-07-01&to=2026-07-31
 ```
 
 ## 4. Teams, people and rules
+
+<Frame caption="Spend → Teams: allocation rolls up the tree; a person's Claude Code estimate stays beside it">
+  <img src="/images/console/spend-teams.png" alt="Teams and budgets allocation table" />
+</Frame>
 
 **Spend → Teams.** A **unit** is a team, a project, or a person; units nest,
 and a unit's total is its own spend plus every descendant's.
@@ -124,6 +140,10 @@ POST /api/v1/spend/units   {"type":"TEAM","name":"Backend","parentId":"…"}
 POST /api/v1/spend/rules   {"spendUnitId":"…","provider":"ANTHROPIC","matchKind":"WORKSPACE_ID","matchValue":"wrkspc_01…","priority":100}
 GET  /api/v1/spend/reports/allocation?from=&to=
 ```
+
+<Frame caption="A unit's sheet: attribution rules and the two-clock budget with its standing">
+  <img src="/images/console/spend-teams-unit.png" alt="Unit sheet with rules and budget" />
+</Frame>
 
 ### Person-level attribution is off by default
 
@@ -152,6 +172,10 @@ An alert fires once per (unit, kind, window):
 | `BREACH` | spend crosses the ceiling |
 | `SPIKE` | today is at least $5 and more than twice the trailing-seven-day daily average |
 
+<Frame>
+  <img src="/images/console/spend-alerts.png" alt="Spend alerts: breach and threshold, once per window, with acknowledge" />
+</Frame>
+
 Budgets are checked after every sync and hourly; **Spend → Alerts** lists
 what fired, **Acknowledge** clears it. Store a Slack incoming webhook under
 Spend settings (it is stored encrypted and never shown again) and each alert
@@ -172,6 +196,10 @@ POST /api/v1/spend/alerts/{id}/ack
 ```
 
 ## 6. Outcomes: cost per shipped thing
+
+<Frame caption="Spend → Outcomes: merged PRs and done issues over allocated spend">
+  <img src="/images/console/spend-outcomes.png" alt="Outcomes report: cost per outcome per unit, sources, recent outcomes" />
+</Frame>
 
 **Spend → Outcomes** puts shipped work next to what it cost. An outcome is a
 merged pull request, a completed issue, or whatever you say it is.
