@@ -176,28 +176,42 @@ POST /api/v1/spend/alerts/{id}/ack
 **Spend → Outcomes** puts shipped work next to what it cost. An outcome is a
 merged pull request, a completed issue, or whatever you say it is.
 
-**Pulled.** Connect GitHub (a token with read access to pull requests; scope
-is a comma-separated `owner/repo` list) or Linear (an API key; scope is
-comma-separated team keys, or `*`). Sync pulls merged PRs / completed issues
-for the window and re-pulls upsert; an hourly job covers the last three days.
+**Pulled.** Connect GitHub (a fine-grained token with read access to pull
+requests; scope is a comma-separated `owner/repo` list such as
+`acme/app, acme/site`) or Linear (an API key; scope is comma-separated team
+keys such as `BE, FE`, or `*` for every team). The token is checked when you
+connect, so a bad one shows `ERROR` immediately. Sync pulls merged PRs /
+completed issues for the window and re-pulls upsert; an hourly job covers the
+last three days. Disconnecting a source removes the outcomes it pulled;
+posted ones stay. A person's GitHub login goes on their PERSON unit under
+Teams so merged PRs attribute to them.
 
-**Posted.** Any CI job or script can record one:
+**Posted.** Any CI job or script can record one with the tenant API key —
+the same `sk_` key that ingests events. Customer `ck_` keys are refused:
+this is your spend, not a customer's.
 
 ```bash
-curl -X POST https://YOUR-INSTANCE/api/v1/spend/outcomes \
-  -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \
-  -d '{"kind":"CUSTOM","externalId":"deploy-2026-08-25-1","title":"Prod deploy","actorEmail":"alice@acme.com"}'
+curl -X POST https://YOUR-INSTANCE/api/v1/client/outcomes \
+  -H "X-API-Key: $TANSO_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"kind":"CUSTOM","externalId":"deploy-2026-08-25-1","title":"Prod deploy","url":"https://ci/…","actorEmail":"alice@acme.com"}'
 ```
 
-The same `externalId` again updates the outcome. Kinds: `PR_MERGED`,
-`ISSUE_DONE`, `CUSTOM`.
+Fields: `kind` (`PR_MERGED`, `ISSUE_DONE`, `CUSTOM`) and `externalId` are
+required; `title`, `url`, `actorEmail`, `actorLogin`, `spendUnitId` and
+`occurredAt` (default now) are optional. Posting the same `externalId` again
+updates only the fields you send. The console route
+`POST /api/v1/spend/outcomes` takes the same body with a JWT.
 
 **Attribution.** An outcome lands on the person whose email or GitHub login
 matches (person level on), else on the source's default unit, else on the
 unit you passed. Outcomes with no unit are counted and called out.
 
-**Report.** Per unit, spend (with descendants) over outcomes (with
-descendants): cost per merged PR, per team, per window.
+**Report.** Per unit, metered spend (with descendants) over outcomes (with
+descendants): cost per merged PR, per team, per window. A person's Claude
+Code estimate is shown beside the metered figure, never inside it, so every
+row divides the same kind of number. Cost per outcome is empty when a unit
+shipped nothing or has no metered spend to divide. **Recent** lists the last
+200 outcomes regardless of window.
 
 ```bash
 GET /api/v1/spend/reports/outcomes?from=&to=
