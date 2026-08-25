@@ -26,7 +26,8 @@
           "credits",
           "credit-weights",
           "credit-prices",
-          "agent-serve"
+          "agent-serve",
+          "internal-spend"
         ]
       },
       {
