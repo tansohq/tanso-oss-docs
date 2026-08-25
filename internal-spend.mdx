@@ -28,8 +28,9 @@ return `404` and the console hides the section.
 
 **Spend → Connections → Connect vendor.** Paste an Anthropic admin key
 (`sk-ant-admin01-…`, created under Console → Settings → Organization), an
-OpenAI admin key, a Cursor admin API key (Enterprise plan), or a GitHub token
-with the *View Organization Copilot Metrics* permission plus the org name. The key is encrypted at rest under `APP_SECRETS_KEY` and
+OpenAI admin key, a Cursor admin API key (Enterprise plan), a GitHub token
+with the *View Organization Copilot Metrics* permission plus the org name, or
+a LiteLLM proxy's master key plus the proxy URL. The key is encrypted at rest under `APP_SECRETS_KEY` and
 only its last four characters are ever shown.
 
 <Warning>
@@ -67,6 +68,7 @@ the vendor's message.
 | Cursor | `teams/filtered-usage-events` | per person and model per day: tokens incl. cache, requests, and what Cursor actually charged |
 | Cursor | `teams/daily-usage-data` | per person per day: accepted lines, accepts/rejects, tab accepts, agent/chat/composer requests |
 | GitHub Copilot | `copilot/metrics/reports/users-1-day` | per person per day: interactions, accepted code, lines, AI credits; CLI/app tokens. No dollar figure — GitHub says credits are not for invoicing |
+| LiteLLM | `spend/logs` | per team, key and user per day, per model: prompt/completion tokens, requests, and the spend LiteLLM computed — every provider behind the proxy in one source |
 
 Rows land in `vendor_usage_buckets` in the vendor's own dimensions. A window
 is deleted and rewritten on every pull, so re-syncing is idempotent.
@@ -194,11 +196,37 @@ Spend settings (it is stored encrypted and never shown again) and each alert
 is posted there as it fires.
 
 <Note>
-Tanso is not in your request path, so a budget cannot stop a request. A
-budget set to **Block** still only alerts — its message says so. Enforce at
-your gateway (LiteLLM, Portkey, Bifrost all take per-key budgets) or revoke
-the key.
+Tanso is not in your request path, so on its own a budget cannot stop a
+request. A budget set to **Block** only alerts — its message says so — unless
+a gateway is connected (below). Without one, enforce at your gateway by hand
+(Portkey and Bifrost also take per-key budgets) or revoke the key.
 </Note>
+
+### Gateway mode: enforce at LiteLLM
+
+If your traffic already goes through a [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/users),
+Tanso can make Block real:
+
+1. **Spend → Connections → Connect vendor**, provider *LiteLLM*: the proxy URL
+   and its master key. *Check key* calls `/health/liveliness`; *Sync now*
+   pulls `/spend/logs`.
+2. On the unit, add a rule with provider *LiteLLM*: *Workspace* = the LiteLLM
+   `team_id`, *API key* = the key, or *Actor* = the internal `user_id`.
+3. Set the monthly ceiling and mode **Block**, save.
+
+Tanso then calls `/team/update`, `/key/update` or `/user/update` with
+`max_budget` (the ceiling in dollars) and `budget_duration: "1mo"`. LiteLLM
+refuses requests once its own spend on that object passes the ceiling and
+resets it monthly. The budget card shows *Enforced at litellm:team:backend*
+and the breach alert says the same; if the push failed it shows *Not
+enforced:* with LiteLLM's error, and the budget still saves. Switching the
+mode back to Alert — or deleting the budget — pushes `max_budget: null` so no
+stale limit stays behind.
+
+Only the monthly ceiling is pushed; LiteLLM keeps one duration per object, so
+the daily ceiling stays an alert. Spend that LiteLLM counts and spend Tanso
+counts can differ slightly (LiteLLM prices from its own model map), so the
+proxy may block a little before or after Tanso's alert.
 
 ```bash
 PUT  /api/v1/spend/units/{id}/budget   {"dailyCents":2500,"monthlyCents":50000,"alertThreshold":80,"monthlyMode":"ALERT"}
@@ -278,7 +306,8 @@ Jobs (`application.yaml` → `jobs:`): `vendorUsageSync` hourly at :15,
 
 ## Limitations
 
-- Blocking is advisory; see the note above.
+- Blocking is advisory unless a LiteLLM connection and rule exist; daily
+  ceilings are never pushed.
 - OpenAI's `group_by` parameter format was verified against OpenAI's cookbook,
   not a live admin key — check per-model rows against your dashboard once.
 - Employee self-view and a manager cohort minimum are not built; person-level
