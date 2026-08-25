@@ -27,8 +27,9 @@ return `404` and the console hides the section.
 </Frame>
 
 **Spend → Connections → Connect vendor.** Paste an Anthropic admin key
-(`sk-ant-admin01-…`, created under Console → Settings → Organization) or an
-OpenAI admin key. The key is encrypted at rest under `APP_SECRETS_KEY` and
+(`sk-ant-admin01-…`, created under Console → Settings → Organization), an
+OpenAI admin key, a Cursor admin API key (Enterprise plan), or a GitHub token
+with the *View Organization Copilot Metrics* permission plus the org name. The key is encrypted at rest under `APP_SECRETS_KEY` and
 only its last four characters are ever shown.
 
 <Warning>
@@ -63,13 +64,18 @@ the vendor's message.
 | Anthropic | `usage_report/claude_code` | per user (email or key name), per model; tokens and the vendor's estimate |
 | OpenAI | `usage/completions` | project, user, API key, model; cached tokens split out of input |
 | OpenAI | `costs` | project, line item; dollars, stored as cents |
+| Cursor | `teams/filtered-usage-events` | per person and model per day: tokens incl. cache, requests, and what Cursor actually charged |
+| Cursor | `teams/daily-usage-data` | per person per day: accepted lines, accepts/rejects, tab accepts, agent/chat/composer requests |
+| GitHub Copilot | `copilot/metrics/reports/users-1-day` | per person per day: interactions, accepted code, lines, AI credits; CLI/app tokens. No dollar figure — GitHub says credits are not for invoicing |
 
 Rows land in `vendor_usage_buckets` in the vendor's own dimensions. A window
 is deleted and rewritten on every pull, so re-syncing is idempotent.
 
 Per-person data is uneven and Tanso says so rather than guessing: Anthropic
-reports people only for Claude Code; OpenAI only for user-scoped keys; usage
-through Bedrock or Vertex is invisible to both.
+reports people only for Claude Code; OpenAI only for user-scoped keys; Cursor
+and Copilot per seat; usage through Bedrock or Vertex is invisible to all of
+them. Cursor windows are capped at 30 days by Cursor; a longer sync is pulled
+in 30-day chunks.
 
 ## 2. Usage
 
@@ -84,6 +90,12 @@ through Bedrock or Vertex is invisible to both.
 Token totals come from usage reports only. Claude Code rows are the same
 traffic seen per person, so they appear under **By person** and are never
 added on top.
+
+**By person** also shows what each vendor reports per seat, beside cost:
+Claude Code sessions, commits, pull requests and tool accept/reject; Cursor
+accepted lines, accepts/rejects and requests; Copilot interactions, accepted
+code and AI credits. A column is empty where the vendor reports nothing.
+These rows only exist while person-level attribution is on.
 
 ```bash
 GET /api/v1/spend/reports/usage?from=2026-08-01&to=2026-09-01   # to is exclusive
@@ -234,6 +246,13 @@ updates only the fields you send. The console route
 matches (person level on), else on the source's default unit, else on the
 unit you passed. Outcomes with no unit are counted and called out.
 
+**AI-assisted.** A merged pull request is tagged AI-assisted, with the tool,
+when GitHub already says so: a `claude-code-assisted`, `copilot` or `cursor`
+label, a `Co-authored-by: Claude` / `Made-with: Cursor` trailer in the body,
+or a bot author. Posted outcomes can say so with `aiAssisted` and `aiTool`.
+Absence is not evidence — an untagged PR is unknown, not human. The report
+counts AI-assisted outcomes per unit.
+
 **Report.** Per unit, metered spend (with descendants) over outcomes (with
 descendants): cost per merged PR, per team, per window. A person's Claude
 Code estimate is shown beside the metered figure, never inside it, so every
@@ -251,7 +270,7 @@ GET /api/v1/spend/reports/outcomes?from=&to=
 | ------- | ----- | ----- |
 | `APP_SECRETS_KEY` | env | Required. Encrypts stored credentials. See [self-hosting](/self-hosting). |
 | `APP_MODULES_BUILD_ENABLED` | env | `false` for a serve-side-only install. |
-| `APP_SPEND_ANTHROPIC_BASE_URL` etc. | env | Point a pull at a gateway or proxy instead of the vendor. |
+| `APP_SPEND_ANTHROPIC_BASE_URL` etc. (`_OPENAI_`, `_CURSOR_`, `_GITHUB_`, `_LINEAR_`) | env | Point a pull at a gateway or proxy instead of the vendor. |
 | Person level, worker notice, Slack webhook | `PUT /api/v1/spend/settings` | Console: Spend → Teams → Spend settings. |
 
 Jobs (`application.yaml` → `jobs:`): `vendorUsageSync` hourly at :15,
@@ -264,5 +283,5 @@ Jobs (`application.yaml` → `jobs:`): `vendorUsageSync` hourly at :15,
   not a live admin key — check per-model rows against your dashboard once.
 - Employee self-view and a manager cohort minimum are not built; person-level
   data is visible to every console user once enabled.
-- Jira and Cursor are not pulled yet. Cursor has an admin API; Jira does not
-  fit the current puller shape. Post outcomes from CI in the meantime.
+- Jira is not pulled; post outcomes from CI in the meantime.
+- Cursor's admin API is Enterprise-only; Teams plans cannot connect it.
