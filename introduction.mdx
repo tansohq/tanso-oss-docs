@@ -49,9 +49,23 @@ For the operator side, the repo ships an admin console (`ui/`): manage the
 catalog, customers, subscriptions, credits, and invoices, and see margin per
 customer, per feature, per model.
 
+## The other half: your own AI bill
+
+The same engine has a **build side**. Connect your Anthropic and OpenAI admin
+keys and Tanso pulls the usage and cost reports the vendors already keep,
+reconciles them against the invoice, allocates spend to teams and people,
+budgets it with daily and monthly ceilings, and puts it next to shipped work
+— cost per merged pull request. No proxy, no desktop agent. See
+[Internal AI spend](/internal-spend). Either half runs on its own.
+
+<Frame>
+  <img src="/images/console/spend-usage.png" alt="The build side: internal AI usage by model, person and day" />
+</Frame>
+
 ## Next steps
 
 - [Quickstart](/quickstart) — running with seeded data in about five minutes,
   console included
 - [Billing lifecycle](/billing-lifecycle) — from empty database to first revenue, every call spelled out
+- [Internal AI spend](/internal-spend) — the build side: your own vendor bills, allocated, budgeted, and joined to outcomes
 - [Self-hosting](/self-hosting) — configuration and production notes

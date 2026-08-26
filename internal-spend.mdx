@@ -1,0 +1,465 @@
+---
+title: "Internal AI spend"
+description: "The build side: pull your own Anthropic and OpenAI bills, reconcile them, allocate to teams and people, budget them, and read cost per shipped thing"
+---
+
+Tanso has two halves. The **serve side** — everything else in these docs —
+answers what it costs to serve each customer. The **build side** answers what
+your own AI costs you: the Anthropic and OpenAI bills for your engineers and
+agents, and what that spend produced.
+
+It works from the vendors' admin APIs. Nothing sits in your request path and
+nothing runs on anyone's laptop: connect an admin key, and Tanso pulls the
+usage and cost reports the vendor already keeps. Everything lives under
+**Spend** in the console and `/api/v1/spend/**` on the Admin API.
+
+Switch the whole half off with `APP_MODULES_BUILD_ENABLED=false` — the routes
+return `404` and the console hides the section.
+
+<Frame caption="Spend → Usage: what your org sent each vendor, priced two ways">
+  <img src="/images/console/spend-usage.png" alt="Internal AI usage by model, person and day" />
+</Frame>
+
+## 1. Connect a vendor
+
+<Frame>
+  <img src="/images/console/spend-connections.png" alt="Vendor connections with status, last sync, check and sync actions" />
+</Frame>
+
+**Spend → Connections → Connect vendor.** Paste an Anthropic admin key
+(`sk-ant-admin01-…`, created under Console → Settings → Organization), an
+OpenAI admin key, a Cursor admin API key (Enterprise plan), a GitHub token
+with the *View Organization Copilot Metrics* permission plus the org name, or
+a LiteLLM proxy's master key plus the proxy URL. The key is encrypted at rest under `APP_SECRETS_KEY` and
+only its last four characters are ever shown.
+
+<Warning>
+An Anthropic Console admin key has no read-only scope: it can administer the
+whole organization. Use a dedicated reporting organization where you can, or
+a Claude Enterprise scoped key if your org has one.
+</Warning>
+
+- **Check key** makes one cheap call and records `ACTIVE` or `ERROR` (with the
+  vendor's own message) on the row.
+- **Sync now** pulls the last 30 days. After that an hourly job re-pulls the
+  last three days — vendor reports lag by up to an hour, so yesterday is never
+  final on the first pass.
+- **Replace key** swaps a key that stopped working; pulled usage stays.
+
+```bash
+POST /api/v1/spend/connections            {"provider":"ANTHROPIC","label":"Engineering org","adminKey":"sk-ant-admin01-…"}
+POST /api/v1/spend/connections/{id}/probe
+POST /api/v1/spend/connections/{id}/sync?from=2026-08-01&to=2026-09-01   # [from, to), 31-day chunks
+PUT  /api/v1/spend/connections/{id}/key   {"adminKey":"…"}
+```
+
+A vendor refusal comes back as `502` with `error.code: "vendor_error"` and
+the vendor's message.
+
+### What is pulled
+
+| Vendor | Report | Dimensions |
+| ------ | ------ | ---------- |
+| Anthropic | `usage_report/messages` | model, workspace, API key, service tier; uncached / cache-read / cache-write / output tokens |
+| Anthropic | `cost_report` | workspace, description; the vendor's price in cents |
+| Anthropic | `usage_report/claude_code` | per user (email or key name), per model; tokens and the vendor's estimate |
+| OpenAI | `usage/completions` | project, user, API key, model; cached tokens split out of input |
+| OpenAI | `costs` | project, line item; dollars, stored as cents |
+| Cursor | `teams/filtered-usage-events` | per person and model per day: tokens incl. cache, requests, and what Cursor actually charged |
+| Cursor | `teams/daily-usage-data` | per person per day: accepted lines, accepts/rejects, tab accepts, agent/chat/composer requests |
+| GitHub Copilot | `copilot/metrics/reports/users-1-day` | per person per day: interactions, accepted code, lines, AI credits; CLI/app tokens. No dollar figure — GitHub says credits are not for invoicing |
+| LiteLLM | `spend/logs` | per team, key and user per day, per model: prompt/completion tokens, requests, and the spend LiteLLM computed — every provider behind the proxy in one source |
+
+Rows land in `vendor_usage_buckets` in the vendor's own dimensions. A window
+is deleted and rewritten on every pull, so re-syncing is idempotent.
+
+Per-person data is uneven and Tanso says so rather than guessing: Anthropic
+reports people only for Claude Code; OpenAI only for user-scoped keys; Cursor
+and Copilot per seat; usage through Bedrock or Vertex is invisible to all of
+them. Cursor windows are capped at 30 days by Cursor; a longer sync is pulled
+in 30-day chunks.
+
+## 2. Usage
+
+**Spend → Usage** shows a window by model, by day, and by person, two ways:
+
+- **Metered** — tokens × the price book (`model_pricing`, including cache
+  read/write rates). A model the price book does not know prices to zero and
+  is named in `unpricedModels`; a model without cache rates prices cached
+  tokens at the full input rate and is marked `~cache`.
+- **Vendor** — what the vendor's own cost report says.
+
+Token totals come from usage reports only. Claude Code rows are the same
+traffic seen per person, so they appear under **By person** and are never
+added on top.
+
+**By person** also shows what each vendor reports per seat, beside cost:
+Claude Code sessions, commits, pull requests and tool accept/reject; Cursor
+accepted lines, accepts/rejects and requests; Copilot interactions, accepted
+code and AI credits. A column is empty where the vendor reports nothing.
+These rows only exist while person-level attribution is on.
+
+```bash
+GET /api/v1/spend/reports/usage?from=2026-08-01&to=2026-09-01   # to is exclusive
+```
+
+## 3. Reconcile
+
+<Frame>
+  <img src="/images/console/spend-reconcile.png" alt="Reconcile: metered vs vendor-reported vs invoiced per vendor" />
+</Frame>
+
+**Spend → Reconcile** compares one period three ways per vendor: metered,
+vendor-reported, and invoiced, with the two variances. Dates here are
+inclusive — invoices are dated, not timestamped.
+
+Import the bill as a CSV with a header row: `description`, `amount` (in
+dollars), and optionally `kind` (`TOKEN`, `SEAT`, `TOOL`, `OTHER`), `model`,
+`quantity`. Seat lines count toward "invoiced" but never appear in a token
+cost report, so "vendor − invoice" carries the seats. An invoice only counts
+toward a window it sits entirely inside; a straddling one is not pro-rated.
+
+```bash
+curl -X POST https://YOUR-INSTANCE/api/v1/spend/invoices \
+  -H "Authorization: Bearer $JWT" \
+  -F provider=ANTHROPIC -F periodStart=2026-07-01 -F periodEnd=2026-07-31 \
+  -F currency=USD -F file=@july.csv
+GET /api/v1/spend/reports/reconcile?from=2026-07-01&to=2026-07-31
+```
+
+## 4. Teams, people and rules
+
+<Frame caption="Spend → Teams: allocation rolls up the tree; a person's Claude Code estimate stays beside it">
+  <img src="/images/console/spend-teams.png" alt="Teams and budgets allocation table" />
+</Frame>
+
+**Spend → Teams.** A **unit** is a team, a project, or a person; units nest,
+and a unit's total is its own spend plus every descendant's.
+
+An **attribution rule** maps a vendor dimension onto a unit:
+
+| `matchKind` | Matches |
+| ----------- | ------- |
+| `WORKSPACE_ID` | Anthropic workspace id or OpenAI project id |
+| `API_KEY_ID` | The vendor's API key id |
+| `ACTOR` | Claude Code email or OpenAI user id |
+
+Rules apply at report time, never materialised — edit one and history
+re-allocates. When several rules match one row, the lowest `priority` number
+wins. Whatever no rule claims shows as **Unattributed**, and always sums with
+the rows back to the metered total.
+
+```bash
+POST /api/v1/spend/units   {"type":"TEAM","name":"Backend","parentId":"…"}
+POST /api/v1/spend/rules   {"spendUnitId":"…","provider":"ANTHROPIC","matchKind":"WORKSPACE_ID","matchValue":"wrkspc_01…","priority":100}
+GET  /api/v1/spend/reports/allocation?from=&to=
+```
+
+<Frame caption="A unit's sheet: attribution rules and the two-clock budget with its standing">
+  <img src="/images/console/spend-teams-unit.png" alt="Unit sheet with rules and budget" />
+</Frame>
+
+### Person-level attribution is off by default
+
+Attributing spend to a named employee is a monitoring capability — in Germany
+a works council can veto it. The switch under **Spend settings** stays off
+until you have written the **worker notice**: what staff were told. While it
+is off, people cannot be created, person rules are skipped, and the by-person
+view stays empty.
+
+A person's Claude Code estimate is shown on the person and **not** rolled up
+into the team: the same traffic already reaches the team through its key
+rules.
+
+## 5. Budgets and alerts
+
+Each unit can carry two ceilings on UTC calendar windows:
+
+- a **daily** ceiling, small, to catch a runaway agent within the day;
+- a **monthly** ceiling, the real number.
+
+An alert fires once per (unit, kind, window):
+
+| Kind | When |
+| ---- | ---- |
+| `THRESHOLD` | spend crosses `alertThreshold` % of a ceiling (default 80) |
+| `BREACH` | spend crosses the ceiling |
+| `SPIKE` | today is at least $5 and more than twice the trailing-seven-day daily average |
+
+<Frame>
+  <img src="/images/console/spend-alerts.png" alt="Spend alerts: breach and threshold, once per window, with acknowledge" />
+</Frame>
+
+Budgets are checked after every sync and hourly; **Spend → Alerts** lists
+what fired, **Acknowledge** clears it. Store a Slack incoming webhook under
+Spend settings (it is stored encrypted and never shown again) and each alert
+is posted there as it fires.
+
+<Note>
+Tanso is not in your request path, so on its own a budget cannot stop a
+request. A budget set to **Block** only alerts — its message says so — unless
+a gateway is connected (below). Without one, enforce at your gateway by hand
+(Portkey and Bifrost also take per-key budgets) or revoke the key.
+</Note>
+
+### Where alerts go
+
+Under **Spend → Teams → Settings**:
+
+| Channel | What is sent | Setup |
+|---|---|---|
+| Slack | one line per alert; the digest as text | an incoming webhook URL (`https://hooks.slack.com/…`) |
+| Webhook | `POST` JSON: `{"type":"spend.alert","accountId":…,"alert":{…}}` or `{"type":"spend.digest",…,"digest":{…}}`; header `X-Tanso-Event`; with a secret, `X-Tanso-Signature: sha256=<hex HMAC-SHA256(secret, raw body)>` | any https URL, optional signing secret — both stored encrypted |
+| Email | subject + text and an HTML table for the digest | comma-separated addresses; the server needs `APP_RESEND_API_KEY` and `APP_SPEND_ALERT_FROM` |
+
+Each channel fails on its own and is logged; an alert is recorded before any
+of them is tried, so a dead endpoint never loses it.
+
+Payload shape: `{"type":"spend.alert","accountId":"…","alert":{…the alert
+as GET /alerts returns it…}}` or `{"type":"spend.digest","accountId":"…",
+"digest":{…as GET /digest…}}`. `POST /digest/send` answers with a `delivery`
+block — `slack` / `webhook` / `email` each `SENT`, `FAILED` or
+`NOT_CONFIGURED` — and the console toast says the same, so a dead email leg
+is never reported as sent. The Slack field only accepts `hooks.slack.com`
+URLs; anything else goes in the webhook field.
+
+Verify a signature in Node:
+
+```js
+const sig = "sha256=" + crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+```
+
+### Projected overspend
+
+Once a month, when at least a fifth of the month has passed and the unit is
+still under its ceiling, Tanso projects month-to-date spend straight-line
+(`spent × month length / elapsed`) and fires **Projected** if that lands above
+the ceiling — "Backend is on pace for $214 this month against a $200 budget."
+One heavy day early in the month would project to anything, hence the wait.
+The pace is `spent × (seconds in month ÷ seconds elapsed)` at the moment of
+the check.
+
+### Temporary bump
+
+A launch week should not mean editing the real budget. On the unit's budget
+card, **Temporary bump** takes an amount above the standing ceiling, an end
+date and a reason. Until then the bump is the ceiling — for alerts, for the
+digest and for the gateway push; after, the standing number is back and, for a
+Block budget, re-pushed to LiteLLM. **End now** drops it early.
+
+### Weekly digest
+
+<Frame caption="Spend → Alerts: the weekly digest, previewed before it goes out">
+  <img src="/images/console/spend-digest.png" alt="Weekly digest card: last week per unit against the week before" />
+</Frame>
+
+Switch it on under Settings; it goes out Monday 08:00 UTC to every configured
+channel: the last seven full UTC days (yesterday back, today excluded) per
+unit against the seven before, month-to-date
+against the ceiling in force (with any bump's reason), unattributed spend and
+how many alerts fired. **Spend → Alerts** previews it and has **Send now**.
+
+### Gateway mode: enforce at LiteLLM
+
+<Frame caption="A Block budget enforced at LiteLLM, bumped for launch week — both clocks shown">
+  <img src="/images/console/spend-gateway-budget.png" alt="Budget card: enforced at litellm:team:backend, bumped, LiteLLM's own count beside Tanso's" />
+</Frame>
+
+If your traffic already goes through a [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/users),
+Tanso can make Block real:
+
+1. **Spend → Connections → Connect vendor**, provider *LiteLLM*: the proxy URL
+   and its master key. *Check key* calls `/health/liveliness`; *Sync now*
+   pulls `/spend/logs`.
+2. On the unit, add a rule with provider *LiteLLM*: *Workspace* = the LiteLLM
+   `team_id`, *API key* = the key, or *Actor* = the internal `user_id`.
+3. Set the monthly ceiling and mode **Block**, save.
+
+Tanso then calls `/team/update`, `/key/update` or `/user/update` with
+`max_budget` (the ceiling in dollars) and `budget_duration: "1mo"`. LiteLLM
+refuses requests once its own spend on that object passes the ceiling and
+resets it monthly. The budget card shows *Enforced at litellm:team:backend*
+and the breach alert says the same; if the push failed it shows *Not
+enforced:* with LiteLLM's error, and the budget still saves. Switching the
+mode back to Alert — or deleting the budget — pushes `max_budget: null` so no
+stale limit stays behind.
+
+Only the monthly ceiling is pushed; LiteLLM keeps one duration per object, so
+the daily ceiling stays an alert. A bump pushes the bumped ceiling and its
+expiry pushes the standing one back; a push that fails still saves the budget
+and shows *Not enforced* with the proxy's error.
+
+<Warning>
+**Two clocks.** Tanso measures a budget on its own price book; LiteLLM
+enforces `max_budget` against spend it priced from its own model map. They
+drift when the maps differ, and the gateway may block well before or after
+Tanso's alert. The budget card therefore also shows *LiteLLM itself counts
+$…* — the proxy's month-to-date for the team/key/user the unit's rules name
+(`gatewaySpentCents` on the API). If the two disagree by more than the odd
+percent, fix the price book (Settings → Model pricing) or the proxy's
+`model_cost_map`.
+</Warning>
+
+```bash
+PUT  /api/v1/spend/units/{id}/budget   {"dailyCents":2500,"monthlyCents":50000,"alertThreshold":80,"monthlyMode":"ALERT"}
+POST /api/v1/spend/budgets/evaluate    # returns what fired this time
+GET  /api/v1/spend/alerts?unackedOnly=true
+POST /api/v1/spend/alerts/{id}/ack
+```
+
+## 6. Outcomes: cost per shipped thing
+
+<Frame caption="Spend → Outcomes: merged PRs and done issues over allocated spend">
+  <img src="/images/console/spend-outcomes.png" alt="Outcomes report: cost per outcome per unit, sources, recent outcomes" />
+</Frame>
+
+**Spend → Outcomes** puts shipped work next to what it cost. An outcome is a
+merged pull request, a completed issue, or whatever you say it is.
+
+**Pulled.** Connect GitHub (a fine-grained token with read access to pull
+requests; scope is a comma-separated `owner/repo` list such as
+`acme/app, acme/site`) or Linear (an API key; scope is comma-separated team
+keys such as `BE, FE`, or `*` for every team). The token is checked when you
+connect, so a bad one shows `ERROR` immediately. Sync pulls merged PRs /
+completed issues for the window and re-pulls upsert; an hourly job covers the
+last three days. Disconnecting a source removes the outcomes it pulled;
+posted ones stay. A person's GitHub login goes on their PERSON unit under
+Teams so merged PRs attribute to them.
+
+**Posted.** Any CI job or script can record one with the tenant API key —
+the same `sk_` key that ingests events. Customer `ck_` keys are refused:
+this is your spend, not a customer's.
+
+```bash
+curl -X POST https://YOUR-INSTANCE/api/v1/client/outcomes \
+  -H "X-API-Key: $TANSO_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"kind":"CUSTOM","externalId":"deploy-2026-08-25-1","title":"Prod deploy","url":"https://ci/…","actorEmail":"alice@acme.com"}'
+```
+
+Fields: `kind` (`PR_MERGED`, `ISSUE_DONE`, `CUSTOM`) and `externalId` are
+required; `title`, `url`, `actorEmail`, `actorLogin`, `spendUnitId` and
+`occurredAt` (default now) are optional. Posting the same `externalId` again
+updates only the fields you send. The console route
+`POST /api/v1/spend/outcomes` takes the same body with a JWT.
+
+**Attribution.** An outcome lands on the person whose email or GitHub login
+matches (person level on), else on the source's default unit, else on the
+unit you passed. Outcomes with no unit are counted and called out.
+
+**AI-assisted.** A merged pull request is tagged AI-assisted, with the tool,
+when GitHub already says so: a `claude-code-assisted`, `copilot` or `cursor`
+label, a `Co-authored-by: Claude` / `Made-with: Cursor` trailer in the body,
+or a bot author. Posted outcomes can say so with `aiAssisted` and `aiTool`.
+Absence is not evidence — an untagged PR is unknown, not human. The report
+counts AI-assisted outcomes per unit.
+
+**Report.** Per unit, metered spend (with descendants) over outcomes (with
+descendants): cost per merged PR, per team, per window. A person's Claude
+Code estimate is shown beside the metered figure, never inside it, so every
+row divides the same kind of number. Cost per outcome is empty when a unit
+shipped nothing or has no metered spend to divide. **Recent** lists the last
+200 outcomes regardless of window.
+
+```bash
+GET /api/v1/spend/reports/outcomes?from=&to=
+```
+
+## 7. Savings: what caching is worth, what a route would cost
+
+**Spend → Savings.** Per model, the input side of the bill as it was billed —
+uncached tokens at the input rate, cache reads and writes at theirs — against
+the same tokens with no cache. The difference is what prompt caching saved;
+it goes negative on a model that wrote more to the cache than it read back.
+Cache-read share is reads over all input tokens.
+
+A model with no cache rates in the price book is priced at its input rate for
+cached tokens, so its saving reads as zero and the row says *no cache rates*
+— add `cache_read_cost_per_million` / `cache_write_cost_per_million` under
+model pricing.
+
+<Frame caption="Spend → Savings: what caching saved, and the same tokens priced on another model">
+  <img src="/images/console/spend-savings.png" alt="Savings by model and a route simulation result" />
+</Frame>
+
+### Route simulator
+
+"What if the traffic on claude-opus-4-1 had gone to claude-sonnet-4-5?" Pick
+the model whose traffic to re-price, a target from the price book, and
+optionally one vendor workspace / project / team id. Tanso sums the matched
+tokens and prices them at both models' rates:
+
+```http
+POST /api/v1/spend/reports/simulate
+{"from":"2026-08-01","to":"2026-08-26","fromModel":"claude-opus-4-1","toModel":"claude-sonnet-4-5","workspaceId":"wrkspc_backend_01"}
+```
+
+The answer carries `currentCents`, `simulatedCents`, `deltaCents` and a list
+of `caveats` that is never empty: token counts are carried over as-is (a
+different tokenizer would change them), quality and latency are not
+modelled, and it says when the target has no cache rates or a model was
+matched fuzzily. It is advice from the price book. Tanso does not route
+requests and will not — that was decided before the build side was started.
+
+## 8. Feature P&L: what it cost to build next to what it earns
+
+<Frame caption="Spend → P&L: build cost next to what the feature earns">
+  <img src="/images/console/spend-pnl.png" alt="Feature P&L: build, outcomes, revenue, serving cost, net per project" />
+</Frame>
+
+This is the join the two halves of the engine exist for. The build side knows
+what a project cost in AI spend; the serve side knows what a feature earns
+from customers and what serving it costs. Link them and one report shows
+both.
+
+1. **Spend → Teams**, open (or create) a *project* unit and pick the feature
+   it shipped under **Feature** — the same features the serve side prices in
+   plans.
+2. **Spend → P&L** (`GET /api/v1/spend/reports/pnl?from&to`): per project,
+   its attributed AI spend with descendants (*build*), what it shipped
+   (outcomes), and from the feature's customer events in the same window:
+   revenue, serving cost, serve margin, and **net** = serve margin − build.
+   Build cost per outcome is there too.
+
+Projects without a feature are listed under *unlinked* rather than hidden,
+and their build cost is not in the totals — a P&L with half the ledger is
+worse than none. Revenue and serving cost come from `revenueAmount` /
+`costAmount` on `CLIENT_TRACKED` and `ENTITLEMENT_CHECKED` events, so a
+feature that is entitled but never metered reads as zero revenue, not as
+missing.
+
+## Outbound URLs
+
+Two things the operator types are URLs the server will call: the LiteLLM
+proxy and the generic webhook. Both are checked when saved: `http(s)` only,
+no credentials in the URL, the host must resolve, and loopback, link-local
+(where cloud metadata services live) and unspecified addresses are refused.
+Private ranges are allowed by default — a self-hosted proxy is exactly what
+sits there; on a multi-tenant install set `APP_SPEND_OUTBOUND_ALLOW_PRIVATE=false`.
+Errors from the proxy are surfaced as its JSON `error.message` / `detail`
+only, never a raw response body.
+
+## Settings and operations
+
+| Setting | Where | Notes |
+| ------- | ----- | ----- |
+| `APP_SECRETS_KEY` | env | Required. Encrypts stored credentials. See [self-hosting](/self-hosting). |
+| `APP_MODULES_BUILD_ENABLED` | env | `false` for a serve-side-only install. |
+| `APP_SPEND_ANTHROPIC_BASE_URL` etc. (`_OPENAI_`, `_CURSOR_`, `_GITHUB_`, `_LINEAR_`) | env | Point a pull at a gateway or proxy instead of the vendor. |
+| Person level, worker notice, Slack webhook | `PUT /api/v1/spend/settings` | Console: Spend → Teams → Spend settings. |
+
+Jobs (`application.yaml` → `jobs:`): `vendorUsageSync` hourly at :15,
+`spendBudget` at :30, `outcomeSync` at :45. All ShedLock-guarded.
+
+## Limitations
+
+- Blocking is advisory unless a LiteLLM connection and rule exist; daily
+  ceilings are never pushed.
+- Email needs a Resend key on the server; there is no SMTP path.
+- P&L revenue is event revenue, not invoiced revenue — flat plan fees that
+  are not attributed to a feature do not appear on it.
+- OpenAI's `group_by` parameter format was verified against OpenAI's cookbook,
+  not a live admin key — check per-model rows against your dashboard once.
+- Employee self-view and a manager cohort minimum are not built; person-level
+  data is visible to every console user once enabled.
+- Jira is not pulled; post outcomes from CI in the meantime.
+- Cursor's admin API is Enterprise-only; Teams plans cannot connect it.

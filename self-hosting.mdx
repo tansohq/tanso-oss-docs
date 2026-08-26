@@ -11,6 +11,9 @@ covers what you'll want to know past the first run.
 | Variable | Required | Notes |
 | -------- | -------- | ----- |
 | `JWT_SECRET` | **Yes** | The app refuses to start without it — no insecure default ships. Generate with `openssl rand -base64 48`. |
+| `APP_SECRETS_KEY` | **Yes** | Encrypts stored credentials at rest (Stripe keys, vendor admin keys, Slack webhook, GitHub/Linear tokens) with AES-256-GCM. The app refuses to start without it, and refuses a key that cannot read what is already stored. To rotate: `DELETE FROM external_api_keys`, `UPDATE vendor_connections SET admin_key=''`, then reconnect. |
+| `APP_MODULES_BUILD_ENABLED` | No | `false` turns the [build side](/internal-spend) off: `/api/v1/spend/**` returns `404` and the console hides Spend. Default `true`. |
+| `APP_SPEND_ANTHROPIC_BASE_URL` / `_OPENAI_` / `_GITHUB_` / `_LINEAR_` | No | Where the build side pulls from. Set to a gateway or proxy. |
 | `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Yes | PostgreSQL connection. |
 | `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` | No | Leave empty to run without Stripe — invoices settle via `mark-paid`. |
 | `APP_MCP_ENABLED` + `SPRING_AI_MCP_SERVER_ENABLED` | No | Both `true` to expose [`/mcp`](/mcp). Off by default. |
@@ -38,7 +41,10 @@ are never edited, so upgrades are a restart.
 Invoice generation, subscription cycle rollover, cancellation processing, and
 credit expiration run as in-process scheduled jobs (ShedLock-guarded, so
 multiple instances won't double-fire). Default crons live in
-`application.yaml` under `jobs:`.
+`application.yaml` under `jobs:`. The build side adds three hourly jobs:
+`vendorUsageSync` (:15, re-pulls the last three days from each connected
+vendor), `spendBudget` (:30, checks every budget), and `outcomeSync` (:45,
+re-pulls merged PRs and completed issues).
 
 ## Admin console
 
@@ -57,6 +63,11 @@ console.
 - Change the seeded test account credentials and API key — they are public
   knowledge (they're in this documentation).
 - Set a strong, private `JWT_SECRET`; rotating it invalidates sessions.
+- Set `APP_SECRETS_KEY` and back it up outside the database — losing it means
+  re-entering every stored credential.
+- The compose file ships Spring MVC and Hibernate logging at `INFO` and
+  `show_sql` off. Do not raise them in production: at `DEBUG`, request bodies
+  — including keys you paste into the console — are written to the logs.
 - Put the API behind TLS; API keys are bearer credentials.
 - `docker compose` in `deploy/` is a starting point, not an HA architecture —
   the app is a standard Spring Boot container and runs anywhere containers
