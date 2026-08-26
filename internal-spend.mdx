@@ -334,6 +334,38 @@ shipped nothing or has no metered spend to divide. **Recent** lists the last
 GET /api/v1/spend/reports/outcomes?from=&to=
 ```
 
+## 7. Savings: what caching is worth, what a route would cost
+
+**Spend → Savings.** Per model, the input side of the bill as it was billed —
+uncached tokens at the input rate, cache reads and writes at theirs — against
+the same tokens with no cache. The difference is what prompt caching saved;
+it goes negative on a model that wrote more to the cache than it read back.
+Cache-read share is reads over all input tokens.
+
+A model with no cache rates in the price book is priced at its input rate for
+cached tokens, so its saving reads as zero and the row says *no cache rates*
+— add `cache_read_cost_per_million` / `cache_write_cost_per_million` under
+model pricing.
+
+### Route simulator
+
+"What if the traffic on claude-opus-4-1 had gone to claude-sonnet-4-5?" Pick
+the model whose traffic to re-price, a target from the price book, and
+optionally one vendor workspace / project / team id. Tanso sums the matched
+tokens and prices them at both models' rates:
+
+```http
+POST /api/v1/spend/reports/simulate
+{"from":"2026-08-01","to":"2026-08-26","fromModel":"claude-opus-4-1","toModel":"claude-sonnet-4-5","workspaceId":"wrkspc_backend_01"}
+```
+
+The answer carries `currentCents`, `simulatedCents`, `deltaCents` and a list
+of `caveats` that is never empty: token counts are carried over as-is (a
+different tokenizer would change them), quality and latency are not
+modelled, and it says when the target has no cache rates or a model was
+matched fuzzily. It is advice from the price book. Tanso does not route
+requests and will not — that was decided before the build side was started.
+
 ## Settings and operations
 
 | Setting | Where | Notes |
