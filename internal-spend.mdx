@@ -427,6 +427,17 @@ worse than none. Revenue and serving cost come from `revenueAmount` /
 feature that is entitled but never metered reads as zero revenue, not as
 missing.
 
+## Outbound URLs
+
+Two things the operator types are URLs the server will call: the LiteLLM
+proxy and the generic webhook. Both are checked when saved: `http(s)` only,
+no credentials in the URL, the host must resolve, and loopback, link-local
+(where cloud metadata services live) and unspecified addresses are refused.
+Private ranges are allowed by default — a self-hosted proxy is exactly what
+sits there; on a multi-tenant install set `APP_SPEND_OUTBOUND_ALLOW_PRIVATE=false`.
+Errors from the proxy are surfaced as its JSON `error.message` / `detail`
+only, never a raw response body.
+
 ## Settings and operations
 
 | Setting | Where | Notes |
