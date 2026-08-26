@@ -202,6 +202,48 @@ a gateway is connected (below). Without one, enforce at your gateway by hand
 (Portkey and Bifrost also take per-key budgets) or revoke the key.
 </Note>
 
+### Where alerts go
+
+Under **Spend → Teams → Settings**:
+
+| Channel | What is sent | Setup |
+|---|---|---|
+| Slack | one line per alert; the digest as text | an incoming webhook URL (`https://hooks.slack.com/…`) |
+| Webhook | `POST` JSON: `{"type":"spend.alert","accountId":…,"alert":{…}}` or `{"type":"spend.digest",…,"digest":{…}}`; header `X-Tanso-Event`; with a secret, `X-Tanso-Signature: sha256=<hex HMAC-SHA256(secret, raw body)>` | any https URL, optional signing secret — both stored encrypted |
+| Email | subject + text and an HTML table for the digest | comma-separated addresses; the server needs `APP_RESEND_API_KEY` and `APP_SPEND_ALERT_FROM` |
+
+Each channel fails on its own and is logged; an alert is recorded before any
+of them is tried, so a dead endpoint never loses it.
+
+Verify a signature in Node:
+
+```js
+const sig = "sha256=" + crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+```
+
+### Projected overspend
+
+Once a month, when at least a fifth of the month has passed and the unit is
+still under its ceiling, Tanso projects month-to-date spend straight-line
+(`spent × month length / elapsed`) and fires **Projected** if that lands above
+the ceiling — "Backend is on pace for $214 this month against a $200 budget."
+One heavy day early in the month would project to anything, hence the wait.
+
+### Temporary bump
+
+A launch week should not mean editing the real budget. On the unit's budget
+card, **Temporary bump** takes an amount above the standing ceiling, an end
+date and a reason. Until then the bump is the ceiling — for alerts, for the
+digest and for the gateway push; after, the standing number is back and, for a
+Block budget, re-pushed to LiteLLM. **End now** drops it early.
+
+### Weekly digest
+
+Switch it on under Settings; it goes out Monday 08:00 UTC to every configured
+channel: last seven full days per unit against the seven before, month-to-date
+against the ceiling in force (with any bump's reason), unattributed spend and
+how many alerts fired. **Spend → Alerts** previews it and has **Send now**.
+
 ### Gateway mode: enforce at LiteLLM
 
 If your traffic already goes through a [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/users),
@@ -308,6 +350,7 @@ Jobs (`application.yaml` → `jobs:`): `vendorUsageSync` hourly at :15,
 
 - Blocking is advisory unless a LiteLLM connection and rule exist; daily
   ceilings are never pushed.
+- Email needs a Resend key on the server; there is no SMTP path.
 - OpenAI's `group_by` parameter format was verified against OpenAI's cookbook,
   not a live admin key — check per-model rows against your dashboard once.
 - Employee self-view and a manager cohort minimum are not built; person-level
