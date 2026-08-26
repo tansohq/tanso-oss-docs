@@ -366,6 +366,29 @@ modelled, and it says when the target has no cache rates or a model was
 matched fuzzily. It is advice from the price book. Tanso does not route
 requests and will not — that was decided before the build side was started.
 
+## 8. Feature P&L: what it cost to build next to what it earns
+
+This is the join the two halves of the engine exist for. The build side knows
+what a project cost in AI spend; the serve side knows what a feature earns
+from customers and what serving it costs. Link them and one report shows
+both.
+
+1. **Spend → Teams**, open (or create) a *project* unit and pick the feature
+   it shipped under **Feature** — the same features the serve side prices in
+   plans.
+2. **Spend → P&L** (`GET /api/v1/spend/reports/pnl?from&to`): per project,
+   its attributed AI spend with descendants (*build*), what it shipped
+   (outcomes), and from the feature's customer events in the same window:
+   revenue, serving cost, serve margin, and **net** = serve margin − build.
+   Build cost per outcome is there too.
+
+Projects without a feature are listed under *unlinked* rather than hidden,
+and their build cost is not in the totals — a P&L with half the ledger is
+worse than none. Revenue and serving cost come from `revenueAmount` /
+`costAmount` on `CLIENT_TRACKED` and `ENTITLEMENT_CHECKED` events, so a
+feature that is entitled but never metered reads as zero revenue, not as
+missing.
+
 ## Settings and operations
 
 | Setting | Where | Notes |
@@ -383,6 +406,8 @@ Jobs (`application.yaml` → `jobs:`): `vendorUsageSync` hourly at :15,
 - Blocking is advisory unless a LiteLLM connection and rule exist; daily
   ceilings are never pushed.
 - Email needs a Resend key on the server; there is no SMTP path.
+- P&L revenue is event revenue, not invoiced revenue — flat plan fees that
+  are not attributed to a feature do not appear on it.
 - OpenAI's `group_by` parameter format was verified against OpenAI's cookbook,
   not a live admin key — check per-model rows against your dashboard once.
 - Employee self-view and a manager cohort minimum are not built; person-level
