@@ -1,20 +1,25 @@
 ---
 title: "Internal AI spend"
-description: "The build side: pull your own Anthropic and OpenAI bills, reconcile them, allocate to teams and people, budget them, and read cost per shipped thing"
+description: "Internal spend: pull your own Anthropic and OpenAI bills, reconcile them, allocate to teams and people, budget them, and read cost per shipped thing"
 ---
 
-Tanso has two halves. The **serve side** — everything else in these docs —
-answers what it costs to serve each customer. The **build side** answers what
+Tanso has two halves. **Monetization**, everything else in these docs,
+answers what it costs to serve each customer. **Internal spend** answers what
 your own AI costs you: the Anthropic and OpenAI bills for your engineers and
 agents, and what that spend produced.
 
 It works from the vendors' admin APIs. Nothing sits in your request path and
 nothing runs on anyone's laptop: connect an admin key, and Tanso pulls the
 usage and cost reports the vendor already keeps. Everything lives under
-**Spend** in the console and `/api/v1/spend/**` on the Admin API.
+**Internal spend** in the console and `/api/v1/spend/**` on the Admin API.
 
-Switch the whole half off with `APP_MODULES_BUILD_ENABLED=false` — the routes
-return `404` and the console hides the section.
+Either half runs on its own. `APP_MODULES_MONETIZATION_ENABLED=false` gives
+you internal spend without the billing engine: plans, customers, credits,
+invoices, the client API, Stripe and the billing jobs are off, their routes
+answer `404` with `"code": "module_disabled"`, and the console opens on
+Internal spend. `APP_MODULES_BUILD_ENABLED=false` is the reverse. Nothing
+about the other half needs to be configured first, and flipping the flag
+later needs no reinstall.
 
 <Frame caption="Spend → Usage: what your org sent each vendor, priced two ways">
   <img src="/images/console/spend-usage.png" alt="Internal AI usage by model, person and day" />
@@ -398,7 +403,7 @@ of `caveats` that is never empty: token counts are carried over as-is (a
 different tokenizer would change them), quality and latency are not
 modelled, and it says when the target has no cache rates or a model was
 matched fuzzily. It is advice from the price book. Tanso does not route
-requests and will not — that was decided before the build side was started.
+requests and will not — that was decided before internal spend was started.
 
 ## 8. Feature P&L: what it cost to build next to what it earns
 
@@ -406,13 +411,13 @@ requests and will not — that was decided before the build side was started.
   <img src="/images/console/spend-pnl.png" alt="Feature P&L: build, outcomes, revenue, serving cost, net per project" />
 </Frame>
 
-This is the join the two halves of the engine exist for. The build side knows
-what a project cost in AI spend; the serve side knows what a feature earns
+This is the join the two halves of the engine exist for. Internal spend knows
+what a project cost in AI spend; monetization knows what a feature earns
 from customers and what serving it costs. Link them and one report shows
 both.
 
 1. **Spend → Teams**, open (or create) a *project* unit and pick the feature
-   it shipped under **Feature** — the same features the serve side prices in
+   it shipped under **Feature** — the same features monetization prices in
    plans.
 2. **Spend → P&L** (`GET /api/v1/spend/reports/pnl?from&to`): per project,
    its attributed AI spend with descendants (*build*), what it shipped

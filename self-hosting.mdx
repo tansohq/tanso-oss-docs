@@ -12,8 +12,9 @@ covers what you'll want to know past the first run.
 | -------- | -------- | ----- |
 | `JWT_SECRET` | **Yes** | The app refuses to start without it — no insecure default ships. Generate with `openssl rand -base64 48`. |
 | `APP_SECRETS_KEY` | **Yes** | Encrypts stored credentials at rest (Stripe keys, vendor admin keys, Slack webhook, GitHub/Linear tokens) with AES-256-GCM. The app refuses to start without it, and refuses a key that cannot read what is already stored. To rotate: `DELETE FROM external_api_keys`, `UPDATE vendor_connections SET admin_key=''`, then reconnect. |
-| `APP_MODULES_BUILD_ENABLED` | No | `false` turns the [build side](/internal-spend) off: `/api/v1/spend/**` returns `404` and the console hides Spend. Default `true`. |
-| `APP_SPEND_ANTHROPIC_BASE_URL` / `_OPENAI_` / `_GITHUB_` / `_LINEAR_` | No | Where the build side pulls from. Set to a gateway or proxy. |
+| `APP_MODULES_MONETIZATION_ENABLED` | No | `false` turns monetization off: plans, customers, credits, invoices, the client API, Stripe and the billing jobs. Their routes return `404` with `"code": "module_disabled"` and the console opens on Internal spend. Use it for an internal-spend-only install. Default `true`. |
+| `APP_MODULES_BUILD_ENABLED` | No | `false` turns [internal spend](/internal-spend) off: `/api/v1/spend/**` returns `404` and the console hides it. Default `true`. |
+| `APP_SPEND_ANTHROPIC_BASE_URL` / `_OPENAI_` / `_GITHUB_` / `_LINEAR_` | No | Where internal spend pulls from. Set to a gateway or proxy. |
 | `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Yes | PostgreSQL connection. |
 | `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET` | No | Leave empty to run without Stripe — invoices settle via `mark-paid`. |
 | `APP_MCP_ENABLED` + `SPRING_AI_MCP_SERVER_ENABLED` | No | Both `true` to expose [`/mcp`](/mcp). Off by default. |
@@ -41,7 +42,7 @@ are never edited, so upgrades are a restart.
 Invoice generation, subscription cycle rollover, cancellation processing, and
 credit expiration run as in-process scheduled jobs (ShedLock-guarded, so
 multiple instances won't double-fire). Default crons live in
-`application.yaml` under `jobs:`. The build side adds three hourly jobs:
+`application.yaml` under `jobs:`. Internal spend adds three hourly jobs:
 `vendorUsageSync` (:15, re-pulls the last three days from each connected
 vendor), `spendBudget` (:30, checks every budget), and `outcomeSync` (:45,
 re-pulls merged PRs and completed issues).
