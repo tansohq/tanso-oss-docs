@@ -249,6 +249,10 @@ Block budget, re-pushed to LiteLLM. **End now** drops it early.
 
 ### Weekly digest
 
+<Frame caption="Spend → Alerts: the weekly digest, previewed before it goes out">
+  <img src="/images/console/spend-digest.png" alt="Weekly digest card: last week per unit against the week before" />
+</Frame>
+
 Switch it on under Settings; it goes out Monday 08:00 UTC to every configured
 channel: the last seven full UTC days (yesterday back, today excluded) per
 unit against the seven before, month-to-date
@@ -256,6 +260,10 @@ against the ceiling in force (with any bump's reason), unattributed spend and
 how many alerts fired. **Spend → Alerts** previews it and has **Send now**.
 
 ### Gateway mode: enforce at LiteLLM
+
+<Frame caption="A Block budget enforced at LiteLLM, bumped for launch week — both clocks shown">
+  <img src="/images/console/spend-gateway-budget.png" alt="Budget card: enforced at litellm:team:backend, bumped, LiteLLM's own count beside Tanso's" />
+</Frame>
 
 If your traffic already goes through a [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/users),
 Tanso can make Block real:
@@ -369,6 +377,10 @@ cached tokens, so its saving reads as zero and the row says *no cache rates*
 — add `cache_read_cost_per_million` / `cache_write_cost_per_million` under
 model pricing.
 
+<Frame caption="Spend → Savings: what caching saved, and the same tokens priced on another model">
+  <img src="/images/console/spend-savings.png" alt="Savings by model and a route simulation result" />
+</Frame>
+
 ### Route simulator
 
 "What if the traffic on claude-opus-4-1 had gone to claude-sonnet-4-5?" Pick
@@ -389,6 +401,10 @@ matched fuzzily. It is advice from the price book. Tanso does not route
 requests and will not — that was decided before the build side was started.
 
 ## 8. Feature P&L: what it cost to build next to what it earns
+
+<Frame caption="Spend → P&L: build cost next to what the feature earns">
+  <img src="/images/console/spend-pnl.png" alt="Feature P&L: build, outcomes, revenue, serving cost, net per project" />
+</Frame>
 
 This is the join the two halves of the engine exist for. The build side knows
 what a project cost in AI spend; the serve side knows what a feature earns
