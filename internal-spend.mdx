@@ -215,6 +215,14 @@ Under **Spend → Teams → Settings**:
 Each channel fails on its own and is logged; an alert is recorded before any
 of them is tried, so a dead endpoint never loses it.
 
+Payload shape: `{"type":"spend.alert","accountId":"…","alert":{…the alert
+as GET /alerts returns it…}}` or `{"type":"spend.digest","accountId":"…",
+"digest":{…as GET /digest…}}`. `POST /digest/send` answers with a `delivery`
+block — `slack` / `webhook` / `email` each `SENT`, `FAILED` or
+`NOT_CONFIGURED` — and the console toast says the same, so a dead email leg
+is never reported as sent. The Slack field only accepts `hooks.slack.com`
+URLs; anything else goes in the webhook field.
+
 Verify a signature in Node:
 
 ```js
@@ -228,6 +236,8 @@ still under its ceiling, Tanso projects month-to-date spend straight-line
 (`spent × month length / elapsed`) and fires **Projected** if that lands above
 the ceiling — "Backend is on pace for $214 this month against a $200 budget."
 One heavy day early in the month would project to anything, hence the wait.
+The pace is `spent × (seconds in month ÷ seconds elapsed)` at the moment of
+the check.
 
 ### Temporary bump
 
@@ -240,7 +250,8 @@ Block budget, re-pushed to LiteLLM. **End now** drops it early.
 ### Weekly digest
 
 Switch it on under Settings; it goes out Monday 08:00 UTC to every configured
-channel: last seven full days per unit against the seven before, month-to-date
+channel: the last seven full UTC days (yesterday back, today excluded) per
+unit against the seven before, month-to-date
 against the ceiling in force (with any bump's reason), unattributed spend and
 how many alerts fired. **Spend → Alerts** previews it and has **Send now**.
 
@@ -266,9 +277,20 @@ mode back to Alert — or deleting the budget — pushes `max_budget: null` so n
 stale limit stays behind.
 
 Only the monthly ceiling is pushed; LiteLLM keeps one duration per object, so
-the daily ceiling stays an alert. Spend that LiteLLM counts and spend Tanso
-counts can differ slightly (LiteLLM prices from its own model map), so the
-proxy may block a little before or after Tanso's alert.
+the daily ceiling stays an alert. A bump pushes the bumped ceiling and its
+expiry pushes the standing one back; a push that fails still saves the budget
+and shows *Not enforced* with the proxy's error.
+
+<Warning>
+**Two clocks.** Tanso measures a budget on its own price book; LiteLLM
+enforces `max_budget` against spend it priced from its own model map. They
+drift when the maps differ, and the gateway may block well before or after
+Tanso's alert. The budget card therefore also shows *LiteLLM itself counts
+$…* — the proxy's month-to-date for the team/key/user the unit's rules name
+(`gatewaySpentCents` on the API). If the two disagree by more than the odd
+percent, fix the price book (Settings → Model pricing) or the proxy's
+`model_cost_map`.
+</Warning>
 
 ```bash
 PUT  /api/v1/spend/units/{id}/budget   {"dailyCents":2500,"monthlyCents":50000,"alertThreshold":80,"monthlyMode":"ALERT"}
