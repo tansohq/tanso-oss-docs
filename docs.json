@@ -14,19 +14,25 @@
         "group": "Get Started",
         "pages": [
           "introduction",
+          "concepts",
           "quickstart",
           "authentication"
         ]
       },
       {
-        "group": "Guides",
+        "group": "Monetization",
         "pages": [
           "billing-lifecycle",
           "metering-and-entitlements",
           "credits",
           "credit-weights",
           "credit-prices",
-          "agent-serve",
+          "agent-serve"
+        ]
+      },
+      {
+        "group": "Internal spend",
+        "pages": [
           "internal-spend"
         ]
       },
