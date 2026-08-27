@@ -1,0 +1,45 @@
+---
+title: "Concepts"
+description: "The two-halves mental model: Monetization and Internal spend on one ledger."
+---
+
+Tanso is one ledger fed from two directions. A customer's usage event and a
+vendor's admin API both land on the same store, so the numbers on both sides
+of your AI business come from the same source instead of two spreadsheets
+that never quite agree.
+
+<Frame>
+  <img src="/images/two-directions.svg" alt="Vendor admin APIs and customer usage events both feed one ledger: Internal spend reconciles to the invoice, Monetization prices per customer." />
+</Frame>
+
+## Monetization — the AI you sell
+
+A customer's usage event carries what it cost you to serve, next to what you
+billed for it. Metering, entitlements, credits, subscriptions and Stripe
+billing all read and write the same ledger, so margin per customer, per
+feature and per model falls out of it rather than requiring a separate
+report. Start at [Introduction](/introduction) and [Quickstart](/quickstart).
+
+## Internal spend — the AI you buy
+
+Usage and cost are pulled from the vendors' own admin APIs (Anthropic,
+OpenAI, Cursor, GitHub Copilot, LiteLLM) on a schedule — no proxy in the
+request path, no agent on anyone's laptop. It's reconciled against the
+invoice, allocated to teams and projects, budgeted, and joined to what it
+produced. Start at [Internal AI spend](/internal-spend).
+
+## Where they meet
+
+Feature P&L links a project on the Internal spend side to the feature it
+shipped on the Monetization side, and reports that feature's revenue and
+serving cost next to what it cost to build — net margin, in one number.
+Nobody else can draw that table because nobody else has both halves on one
+engine.
+
+## Either half runs on its own
+
+Neither side depends on the other being configured. Set
+`APP_MODULES_MONETIZATION_ENABLED=false` for an internal-spend-only install,
+or `APP_MODULES_BUILD_ENABLED=false` to run monetization alone — the other
+half's routes disappear (`404 module_disabled`) and its console section
+hides. See [Self-hosting](/self-hosting) for the full flag list.
