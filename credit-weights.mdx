@@ -33,6 +33,10 @@ Every response tells you which row matched via `weightMatch`:
 
 Use the console (**Credits → Weights**) or the admin API:
 
+<Frame caption="Credits → Weights: the live tariff, with a cutover scheduled ahead of it">
+  <img src="/images/console/weights.png" alt="Credit weights table with a scheduled tariff change queued above it" />
+</Frame>
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/monetization/credits/weights/publish \
   -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \

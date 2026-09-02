@@ -18,6 +18,10 @@ before you incur the cost of serving it, not at invoice reconciliation.
 | **Grant** | An addition to a pool, such as plan-included, purchased, or promotional credits, with optional expiry and FIFO draw-down |
 | **Transaction** | Append-only ledger entry with `balance_before` / `balance_after`, so every balance is auditable to the unit |
 
+<Frame caption="Credits → Pools → Transactions: every grant and deduction with the balance before and after">
+  <img src="/images/console/ledger.png" alt="Credit pool ledger with running balances per transaction" />
+</Frame>
+
 Pools link to subscriptions with a **draw priority** and optional
 **draw limit**, so multiple pools can back one subscription and drain in a
 defined order.
