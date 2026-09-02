@@ -55,6 +55,10 @@
   "navbar": {
     "links": [
       {
+        "label": "Support",
+        "href": "mailto:kat@tansohq.com"
+      },
+      {
         "label": "GitHub",
         "href": "https://github.com/tansohq/tanso-oss"
       }
