@@ -21,7 +21,7 @@ Internal spend. `APP_MODULES_BUILD_ENABLED=false` is the reverse. Nothing
 about the other half needs to be configured first, and flipping the flag
 later needs no reinstall.
 
-<Frame caption="Spend → Usage: what your org sent each vendor, priced two ways">
+<Frame caption="Internal spend → Usage: what your org sent each vendor, priced two ways">
   <img src="/images/console/spend-usage.png" alt="Internal AI usage by model, person and day" />
 </Frame>
 
@@ -31,7 +31,7 @@ later needs no reinstall.
   <img src="/images/console/spend-connections.png" alt="Vendor connections with status, last sync, check and sync actions" />
 </Frame>
 
-**Spend → Connections → Connect vendor.** Paste an Anthropic admin key
+**Internal spend → Connections → Connect vendor.** Paste an Anthropic admin key
 (`sk-ant-admin01-…`, created under Console → Settings → Organization), an
 OpenAI admin key, a Cursor admin API key (Enterprise plan), a GitHub token
 with the *View Organization Copilot Metrics* permission plus the org name, or
@@ -86,7 +86,7 @@ in 30-day chunks.
 
 ## 2. Usage
 
-**Spend → Usage** shows a window by model, by day, and by person, two ways:
+**Internal spend → Usage** shows a window by model, by day, and by person, two ways:
 
 - **Metered** — tokens × the price book (`model_pricing`, including cache
   read/write rates). A model the price book does not know prices to zero and
@@ -114,7 +114,7 @@ GET /api/v1/spend/reports/usage?from=2026-08-01&to=2026-09-01   # to is exclusiv
   <img src="/images/console/spend-reconcile.png" alt="Reconcile: metered vs vendor-reported vs invoiced per vendor" />
 </Frame>
 
-**Spend → Reconcile** compares one period three ways per vendor: metered,
+**Internal spend → Reconcile** compares one period three ways per vendor: metered,
 vendor-reported, and invoiced, with the two variances. Dates here are
 inclusive — invoices are dated, not timestamped.
 
@@ -134,11 +134,11 @@ GET /api/v1/spend/reports/reconcile?from=2026-07-01&to=2026-07-31
 
 ## 4. Teams, people and rules
 
-<Frame caption="Spend → Teams: allocation rolls up the tree; a person's Claude Code estimate stays beside it">
+<Frame caption="Internal spend → Teams: allocation rolls up the tree; a person's Claude Code estimate stays beside it">
   <img src="/images/console/spend-teams.png" alt="Teams and budgets allocation table" />
 </Frame>
 
-**Spend → Teams.** A **unit** is a team, a project, or a person; units nest,
+**Internal spend → Teams.** A **unit** is a team, a project, or a person; units nest,
 and a unit's total is its own spend plus every descendant's.
 
 An **attribution rule** maps a vendor dimension onto a unit:
@@ -195,7 +195,7 @@ An alert fires once per (unit, kind, window):
   <img src="/images/console/spend-alerts.png" alt="Spend alerts: breach and threshold, once per window, with acknowledge" />
 </Frame>
 
-Budgets are checked after every sync and hourly; **Spend → Alerts** lists
+Budgets are checked after every sync and hourly; **Internal spend → Alerts** lists
 what fired, **Acknowledge** clears it. Store a Slack incoming webhook under
 Spend settings (it is stored encrypted and never shown again) and each alert
 is posted there as it fires.
@@ -209,7 +209,7 @@ a gateway is connected (below). Without one, enforce at your gateway by hand
 
 ### Where alerts go
 
-Under **Spend → Teams → Settings**:
+Under **Internal spend → Teams → Settings**:
 
 | Channel | What is sent | Setup |
 |---|---|---|
@@ -254,7 +254,7 @@ Block budget, re-pushed to LiteLLM. **End now** drops it early.
 
 ### Weekly digest
 
-<Frame caption="Spend → Alerts: the weekly digest, previewed before it goes out">
+<Frame caption="Internal spend → Alerts: the weekly digest, previewed before it goes out">
   <img src="/images/console/spend-digest.png" alt="Weekly digest card: last week per unit against the week before" />
 </Frame>
 
@@ -262,7 +262,7 @@ Switch it on under Settings; it goes out Monday 08:00 UTC to every configured
 channel: the last seven full UTC days (yesterday back, today excluded) per
 unit against the seven before, month-to-date
 against the ceiling in force (with any bump's reason), unattributed spend and
-how many alerts fired. **Spend → Alerts** previews it and has **Send now**.
+how many alerts fired. **Internal spend → Alerts** previews it and has **Send now**.
 
 ### Gateway mode: enforce at LiteLLM
 
@@ -273,7 +273,7 @@ how many alerts fired. **Spend → Alerts** previews it and has **Send now**.
 If your traffic already goes through a [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/users),
 Tanso can make Block real:
 
-1. **Spend → Connections → Connect vendor**, provider *LiteLLM*: the proxy URL
+1. **Internal spend → Connections → Connect vendor**, provider *LiteLLM*: the proxy URL
    and its master key. *Check key* calls `/health/liveliness`; *Sync now*
    pulls `/spend/logs`.
 2. On the unit, add a rule with provider *LiteLLM*: *Workspace* = the LiteLLM
@@ -314,11 +314,11 @@ POST /api/v1/spend/alerts/{id}/ack
 
 ## 6. Outcomes: cost per shipped thing
 
-<Frame caption="Spend → Outcomes: merged PRs and done issues over allocated spend">
+<Frame caption="Internal spend → Outcomes: merged PRs and done issues over allocated spend">
   <img src="/images/console/spend-outcomes.png" alt="Outcomes report: cost per outcome per unit, sources, recent outcomes" />
 </Frame>
 
-**Spend → Outcomes** puts shipped work next to what it cost. An outcome is a
+**Internal spend → Outcomes** puts shipped work next to what it cost. An outcome is a
 merged pull request, a completed issue, or whatever you say it is.
 
 **Pulled.** Connect GitHub (a fine-grained token with read access to pull
@@ -371,7 +371,7 @@ GET /api/v1/spend/reports/outcomes?from=&to=
 
 ## 7. Savings: what caching is worth, what a route would cost
 
-**Spend → Savings.** Per model, the input side of the bill as it was billed —
+**Internal spend → Usage → Savings.** Per model, the input side of the bill as it was billed —
 uncached tokens at the input rate, cache reads and writes at theirs — against
 the same tokens with no cache. The difference is what prompt caching saved;
 it goes negative on a model that wrote more to the cache than it read back.
@@ -382,7 +382,7 @@ cached tokens, so its saving reads as zero and the row says *no cache rates*
 — add `cache_read_cost_per_million` / `cache_write_cost_per_million` under
 model pricing.
 
-<Frame caption="Spend → Savings: what caching saved, and the same tokens priced on another model">
+<Frame caption="Internal spend → Usage → Savings: what caching saved, and the same tokens priced on another model">
   <img src="/images/console/spend-savings.png" alt="Savings by model and a route simulation result" />
 </Frame>
 
@@ -407,7 +407,7 @@ requests and will not — that was decided before internal spend was started.
 
 ## 8. Feature P&L: what it cost to build next to what it earns
 
-<Frame caption="Spend → P&L: build cost next to what the feature earns">
+<Frame caption="Internal spend → Feature P&L: build cost next to what the feature earns">
   <img src="/images/console/spend-pnl.png" alt="Feature P&L: build, outcomes, revenue, serving cost, net per project" />
 </Frame>
 
@@ -416,10 +416,10 @@ what a project cost in AI spend; monetization knows what a feature earns
 from customers and what serving it costs. Link them and one report shows
 both.
 
-1. **Spend → Teams**, open (or create) a *project* unit and pick the feature
+1. **Internal spend → Teams**, open (or create) a *project* unit and pick the feature
    it shipped under **Feature** — the same features monetization prices in
    plans.
-2. **Spend → P&L** (`GET /api/v1/spend/reports/pnl?from&to`): per project,
+2. **Internal spend → Feature P&L** (`GET /api/v1/spend/reports/pnl?from&to`): per project,
    its attributed AI spend with descendants (*build*), what it shipped
    (outcomes), and from the feature's customer events in the same window:
    revenue, serving cost, serve margin, and **net** = serve margin − build.
@@ -450,7 +450,7 @@ only, never a raw response body.
 | `APP_SECRETS_KEY` | env | Required. Encrypts stored credentials. See [self-hosting](/self-hosting). |
 | `APP_MODULES_BUILD_ENABLED` | env | `false` for a serve-side-only install. |
 | `APP_SPEND_ANTHROPIC_BASE_URL` etc. (`_OPENAI_`, `_CURSOR_`, `_GITHUB_`, `_LINEAR_`) | env | Point a pull at a gateway or proxy instead of the vendor. |
-| Person level, worker notice, Slack webhook | `PUT /api/v1/spend/settings` | Console: Spend → Teams → Spend settings. |
+| Person level, worker notice, Slack webhook | `PUT /api/v1/spend/settings` | Console: Internal spend → Teams → Spend settings. |
 
 Jobs (`application.yaml` → `jobs:`): `vendorUsageSync` hourly at :15,
 `spendBudget` at :30, `outcomeSync` at :45. All ShedLock-guarded.
