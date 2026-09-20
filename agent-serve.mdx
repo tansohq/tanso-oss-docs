@@ -179,6 +179,16 @@ Grouped by subscription, feature and event name, with `usageUnits`, an
 and `subscriptionId` filters. The window defaults to the last 90 days and is
 capped at 366.
 
+To check a total against the records it was built from:
+
+```bash
+GET /api/v1/client/customers/{ref}/usage/events?page=0&limit=50
+```
+
+The events themselves, newest first, each with the idempotency key it was
+written under. Recorded usage is append-only — nothing edits an event, and a
+correction is another event — so what comes back is what was written.
+
 ## Dev readiness
 
 - Every error carries a stable `code` (`unauthorized`, `payment_required`,
@@ -201,6 +211,5 @@ key can never reconfigure your pricing.
 ## Deliberately not yet
 
 Rate-limit headers, outbound webhooks (usage thresholds, spend alerts),
-Web Bot Auth, and A2A agent cards are roadmap. Reading back the individual
-events behind a usage total is roadmap too: the events endpoint takes writes
-only today. The `governance` block in pricing.json reports only what is true.
+Web Bot Auth, and A2A agent cards are roadmap. The `governance` block in
+pricing.json reports only what is true.
