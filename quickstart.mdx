@@ -115,3 +115,7 @@ This is deliberate. A self-hosted billing engine's operator **is** the tenant;
 a public signup endpoint on your billing system would be pure attack surface.
 You bootstrap your account with `setup.sh` (or `scripts/create-test-account.sql`
 directly) and log in from there.
+
+Your own customers are a different question. If you want their buying agents to
+sign themselves up and pay without a human, that surface exists and is opt-in
+per account: see [agent-serve](/agent-serve).

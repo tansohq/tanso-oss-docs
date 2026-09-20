@@ -36,8 +36,23 @@ curl -X POST https://YOUR-INSTANCE/public/v1/catalog/{slug}/signup \
 Returns a customer (`agent_…` reference ID), a subscription to your
 designated **free** default plan, and a customer-scoped API key — once.
 Enable with `agentSignupEnabled` + `agentSignupDefaultPlanId` (validated
-free and ACTIVE at save). An hourly per-account cap returns `429` with
-`Retry-After`.
+free and ACTIVE at save). An hourly per-account cap and a per-IP cap each
+return `429` with `Retry-After`.
+
+`email` is optional. An account created without one is **provisional**: it
+works immediately, carries an `expires_at`, and is deleted if nothing is paid
+for by then. Paying claims it — there is no confirmation email and no claim
+link. The signup response carries `status_url` and `owner_url`, and a
+`nextSteps` map of the endpoints an agent needs next.
+
+```bash
+GET /api/v1/client/customers/{ref}/status
+# → {"status": "provisional" | "claimed" | "expired", "expires_at": ...,
+#    "plan": "...", "remaining": {...}, "owner_email": null}
+
+PUT /api/v1/client/customers/{ref}/owner
+# {"email": "principal@example.com"}  — name the human who owns the account
+```
 
 ## 3. Scoped keys
 
@@ -88,7 +103,50 @@ POST /api/v1/client/credits/purchases
 Success grants a `PURCHASED` credit grant stamped at book price, idempotent
 by payment intent. The same 402 + polling fallback applies. Every
 agent-initiated charge is checked against the account's spend cap
-(`agentMaxTopupAmount`) **before** money moves.
+(`agentMaxTopupAmount`) and the calling key's own budget **before** money
+moves; a breach is a `403` naming which ceiling it hit.
+
+When Tanso handles the billing and Stripe only collects, there is no checkout
+session. The 402 then carries the hosted invoice URL, and `poll` is the
+customer's status URL: watch `plan` and `status` there instead.
+
+**Changing plan on an existing subscription** works the same way:
+
+```bash
+POST /api/v1/client/subscriptions/{subscriptionId}/plan-change
+# {"changeType": "UPGRADE", "changeToPlanId": "..."}
+```
+
+An upgrade that costs money and comes from a customer key raises the
+proration invoice and answers `402` — the subscription stays on its current
+plan until that invoice is paid, so an agent never reaches a paid tier ahead
+of its principal. Paying completes the change. Asking twice returns the same
+invoice; aiming at a different plan voids the first one.
+
+### The gate envelope
+
+Every `402`, and every `403` caused by a limit or an access rule, carries the
+same `error` object, so an agent can branch on fields instead of prose:
+
+```json
+{
+  "code": "payment_required",
+  "gate": "payment",
+  "action": "complete_checkout",
+  "url": "https://invoice.stripe.com/…",
+  "poll": "https://YOUR-INSTANCE/api/v1/client/customers/agent_7f3c9a2e/status",
+  "retry_after": null,
+  "message": "Payment is required: hand url to a human to complete checkout, then poll for the outcome."
+}
+```
+
+| status | code | action | do this |
+|---|---|---|---|
+| 402 | `payment_required` | `complete_checkout` | Hand `url` to the human who owns the account, poll `poll`, then continue. |
+| 402 | `payment_required` | `nominate_owner` | Stripe needs an address to send the invoice to. `PUT` an email to `url`, then retry. |
+| 403 | `budget_exceeded` | `wait` | The key's budget window is spent. Wait `retry_after` seconds. |
+| 403 | `spend_cap_exceeded` | `raise_spend_cap` | One charge is over the cap. Waiting will not help; ask the owner. |
+| 403 | `scope_denied` | `request_scope` | The key lacks `purchase`. |
 
 ## 5. Use: pre-flight quotes and the burndown API
 
@@ -103,6 +161,23 @@ GET /api/v1/client/customers/{ref}/usage
 Per-feature current-period usage with a linear end-of-period projection,
 and per-pool credit balances with average daily burn, projected depletion
 date, and the current credit price.
+
+Plans the customer has left are reported too, marked `status: "ended"` with an
+`endedAt`, for the last year. A plan change ends the subscription the usage was
+recorded on, and that period still has to be auditable, so their usage is read
+from the events themselves and carries no limit or projection.
+
+For a window you choose, and for reconciling a total against the events behind
+it:
+
+```bash
+GET /api/v1/client/customers/{ref}/usage/history?from=2026-09-01T00:00:00Z&to=2026-10-01T00:00:00Z
+```
+
+Grouped by subscription, feature and event name, with `usageUnits`, an
+`events` count and first and last timestamps per group. Optional `featureKey`
+and `subscriptionId` filters. The window defaults to the last 90 days and is
+capped at 366.
 
 ## Dev readiness
 
@@ -126,5 +201,6 @@ key can never reconfigure your pricing.
 ## Deliberately not yet
 
 Rate-limit headers, outbound webhooks (usage thresholds, spend alerts),
-per-key budgets, Web Bot Auth, and A2A agent cards are roadmap. The
-`governance` block in pricing.json reports only what is true.
+Web Bot Auth, and A2A agent cards are roadmap. Reading back the individual
+events behind a usage total is roadmap too: the events endpoint takes writes
+only today. The `governance` block in pricing.json reports only what is true.
