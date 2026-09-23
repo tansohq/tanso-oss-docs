@@ -116,6 +116,12 @@ With Stripe connected, behavior depends on the account's Stripe mode:
   immediately; the subscription is created by webhook once the customer pays,
   and `mark-paid` is rejected.
 
+Upgrading an existing subscription between in-advance plans charges the
+prorated difference at the moment of the upgrade on Stripe-billed accounts;
+the plan moves once that payment succeeds. Without a saved card, the call
+returns the Stripe invoice to pay instead. Downgrades are scheduled for the
+end of the period.
+
 ## 8. Check the entitlement — now allowed
 
 ```bash
