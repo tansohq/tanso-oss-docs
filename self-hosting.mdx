@@ -31,6 +31,29 @@ switches the account to Stripe-driven billing: checkout sessions, webhook
 sync, and meter forwarding. Billing state stays in Tanso either way — Stripe
 is the payment adapter, not the source of truth.
 
+A few things happen on their own once Stripe is connected:
+
+- **Webhook events stay current.** On startup Tanso adds any Stripe events it
+  handles to its webhook destination in each connected Stripe account. It
+  only adds events, never removes any. Turn it off with
+  `app.stripe-event-destination-sync-enabled=false`, for example on a dev
+  database whose accounts hold real Stripe keys.
+- **Return pages.** After a Stripe Checkout page, the human lands on
+  `/public/checkout/complete` or `/public/checkout/cancelled` on your instance,
+  unless the account sets `stripeCheckoutSuccessUrl` / `stripeCheckoutCancelUrl`.
+- **Upgrades charge immediately.** On Stripe-billed accounts an upgrade
+  between in-advance plans charges the prorated amount during the call, and
+  the plan moves once the payment succeeds. Downgrades take effect at the end
+  of the period.
+
+## Behind a proxy
+
+With the `prod` profile (`forward-headers-strategy: framework`), the per-IP
+agent signup cap reads the leftmost `X-Forwarded-For` entry. Your
+proxy or load balancer must overwrite that header, not append to it,
+otherwise a caller can pick its own IP and the per-IP cap stops working. The
+per-account cap holds either way.
+
 ## Database & migrations
 
 Liquibase applies the full schema on startup — an empty PostgreSQL is all you

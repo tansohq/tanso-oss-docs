@@ -39,7 +39,16 @@ Enable with `agentSignupEnabled` + `agentSignupDefaultPlanId` (validated
 free and ACTIVE at save). An hourly per-account cap and a per-IP cap each
 return `429` with `Retry-After`.
 
-`email` is optional. An account created without one is **provisional**: it
+Every field is optional. `email` is recorded as the owner contact: Tanso sends
+nothing to it, Stripe may send receipts and invoices to it. A signup can also
+ask for a spend mandate up front (see step 4):
+
+```bash
+-d '{"email": "principal@example.com",
+     "spend_mandate": {"max_amount": 50.00, "currency": "usd", "period": "month"}}'
+```
+
+An account created without an email is **provisional**: it
 works immediately, carries an `expires_at`, and is deleted if nothing is paid
 for by then. Paying claims it — there is no confirmation email and no claim
 link. The signup response carries `status_url` and `owner_url`, and a
@@ -101,10 +110,36 @@ POST /api/v1/client/credits/purchases
 ```
 
 Success grants a `PURCHASED` credit grant stamped at book price, idempotent
-by payment intent. The same 402 + polling fallback applies. Every
-agent-initiated charge is checked against the account's spend cap
-(`agentMaxTopupAmount`) and the calling key's own budget **before** money
-moves; a breach is a `403` naming which ceiling it hit.
+by payment intent. The same 402 + polling fallback applies.
+
+**Limits.** Three ceilings are checked **before** money moves; a breach is a
+`403` naming which one it hit:
+
+- the operator's per-charge cap (`agentMaxTopupAmount`), on every charge an
+  agent starts, whether a saved card is charged or a human pays on a page;
+- the calling key's budget, set by the operator;
+- the spend mandate, approved by the human (below).
+
+The key budget and the mandate only block **off-session** charges, where Tanso
+charges a saved card with no human present. A hosted page where the human pays
+in person is never blocked by them. Hosted payments count toward the key's
+budget but not toward the mandate.
+
+**Spend mandate.** The human's standing approval for off-session charges: up to
+`max_amount` per `day`, `week` or `month`, across all of the customer's keys.
+Ask for one at signup or later:
+
+```bash
+POST /api/v1/client/customers/{ref}/spend-mandate
+# {"max_amount": 100.00, "currency": "usd", "period": "month"}
+# → {"status": "pending", "setup_url": "https://checkout.stripe.com/…", ...}
+```
+
+Hand `setup_url` to the human. The Stripe page shows the amount they are
+approving, saves their card, and returns them to a Tanso confirmation page.
+The operator must set a ceiling (`agentMaxMandateAmount`) before mandates can
+be turned on; asking above it is a `400` that names the limit. `/status` shows
+the mandate's `max_amount`, `spent`, `remaining` and `resets_at`.
 
 When Tanso handles the billing and Stripe only collects, there is no checkout
 session. The 402 then carries the hosted invoice URL, and `poll` is the
@@ -117,11 +152,22 @@ POST /api/v1/client/subscriptions/{subscriptionId}/plan-change
 # {"changeType": "UPGRADE", "changeToPlanId": "..."}
 ```
 
-An upgrade that costs money and comes from a customer key raises the
-proration invoice and answers `402` — the subscription stays on its current
-plan until that invoice is paid, so an agent never reaches a paid tier ahead
-of its principal. Paying completes the change. Asking twice returns the same
-invoice; aiming at a different plan voids the first one.
+An upgrade that costs money never reaches a paid tier ahead of the payment:
+
+- **Stripe runs the billing** (`STRIPE_DRIVEN` for customer keys,
+  `STRIPE_INTEGRATION` for every caller): Stripe charges the prorated amount
+  during the call. A `200` means it was paid and the new plan is already
+  active. With no card, a declined charge, or a Stripe account that emails
+  invoices instead of charging cards, the call answers `402` with Stripe's
+  invoice as `url`; the plan moves when it is paid. An unpaid Stripe change
+  expires after about 23 hours. Tenant (`sk_`) callers get `202` with
+  `status: "payment_pending"` and the payment link instead of a `402`.
+- **Tanso runs the billing:** a customer-key upgrade raises the proration
+  invoice and answers `402`; paying completes the change.
+
+Asking twice returns the same invoice; aiming at a different plan voids the
+first one. A downgrade is scheduled for the end of the period and charges
+nothing.
 
 ### The gate envelope
 
@@ -143,9 +189,10 @@ same `error` object, so an agent can branch on fields instead of prose:
 | status | code | action | do this |
 |---|---|---|---|
 | 402 | `payment_required` | `complete_checkout` | Hand `url` to the human who owns the account, poll `poll`, then continue. |
-| 402 | `payment_required` | `nominate_owner` | Stripe needs an address to send the invoice to. `PUT` an email to `url`, then retry. |
-| 403 | `budget_exceeded` | `wait` | The key's budget window is spent. Wait `retry_after` seconds. |
-| 403 | `spend_cap_exceeded` | `raise_spend_cap` | One charge is over the cap. Waiting will not help; ask the owner. |
+| 402 | `payment_required` | `nominate_owner` | Only where Tanso sends Stripe invoices by email and no card is saved. `PUT` an email to `url`, then retry. A spend mandate or a signup email avoids this. |
+| 403 | `budget_exceeded` | `wait` | The key's budget or the mandate's window is used up, but the charge fits once it resets. Off-session only. Wait `retry_after` seconds. |
+| 403 | `spend_cap_exceeded` | `raise_spend_cap` | One charge is over the operator's per-charge cap, or larger than the key's whole budget. Waiting will not help; ask the operator. |
+| 403 | `spend_cap_exceeded` | `raise_mandate` | One off-session charge is larger than the whole mandate. `url` is the spend-mandate endpoint: ask for a higher `max_amount` and hand the new `setup_url` to the human, or buy less. |
 | 403 | `scope_denied` | `request_scope` | The key lacks `purchase`. |
 
 ## 5. Use: pre-flight quotes and the burndown API
